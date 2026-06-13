@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sprzatanie-v4';
+const CACHE_NAME = 'sprzatanie-v5';
 const CACHE_URLS = [
   './sprzatanie.html',
   './manifest.json',
