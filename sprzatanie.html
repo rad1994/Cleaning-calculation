@@ -434,7 +434,7 @@ const I18N = {
     colTotalApts: 'Apt. łącznie', colBeddingPcs: 'Pościel (szt.)', colBeddingValue: 'Pościel £', colBaseEarnings: 'Zarobki bazowe £',
     colExtra: 'Dopłata £', colExtraReason: 'Powód dopłaty', colTotal: 'Łącznie £', colNotes: 'Uwagi', sumLabel: 'SUMA',
     colType: 'Typ', colAddress: 'Adres', colRate: 'Stawka £', sheetSummary: 'Podsumowanie', sheetItems: 'Obiekty z adresami', noAddressData: 'Brak danych z adresami', infoCol: 'Info',
-    colObjectN: n => `Obiekt ${n}`, colObjectNr: 'Nr obiektu',
+    dayTotalLabel: 'Podsumowanie dnia',
   },
   en: {
     appTitle: '🧹 Cleaning Diary',
@@ -518,7 +518,7 @@ const I18N = {
     colTotalApts: 'Total apts', colBeddingPcs: 'Bedding (pcs)', colBeddingValue: 'Bedding £', colBaseEarnings: 'Base earnings £',
     colExtra: 'Surcharge £', colExtraReason: 'Surcharge reason', colTotal: 'Total £', colNotes: 'Notes', sumLabel: 'TOTAL',
     colType: 'Type', colAddress: 'Address', colRate: 'Rate £', sheetSummary: 'Summary', sheetItems: 'Properties with addresses', noAddressData: 'No address data', infoCol: 'Info',
-    colObjectN: n => `Property ${n}`, colObjectNr: 'Object No.',
+    dayTotalLabel: 'Day total',
   }
 };
 
@@ -1350,37 +1350,45 @@ function exportExcel() {
   const data = loadData();
   if (!data.length) { toast(t('toastNoData')); return; }
   const mf = document.getElementById('filter-month').value;
-  const filtered = mf ? data.filter(e=>e.date.startsWith(mf)) : data;
+  const filtered = (mf ? data.filter(e=>e.date.startsWith(mf)) : data).slice().sort((a,b)=>a.date.localeCompare(b.date));
   if (!filtered.length) { toast(t('toastNoDataMonth')); return; }
 
-  // Sheet 1: daily summary - one row per property/object, day info repeated on each row
+  // Sheet 1: daily summary - one row per property/object (own data only), then a day-total row
   const rows = filtered.flatMap(e => {
-    const items = (e.items||[]).length ? e.items : [null];
-    return items.map((it, i) => {
+    const dateStr = formatDateDMY(e.date);
+    const dayStr = new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'});
+
+    const objectRows = (e.items||[]).map(it => {
       const row = {
-        [t('colObjectNr')]: items.length>1 || it ? i+1 : '',
-        [t('colDate')]: formatDateDMY(e.date),
-        [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
-        [t('colType')]: it ? (lbl(it.type)||it.type) : '',
-        [t('colAddress')]: it ? (it.address||'') : '',
-        [t('colRate')]: it ? it.rate : '',
-        [t('colStart')]: e.start, [t('colEnd')]: e.end, [t('colHours')]: e.hoursWorked, [t('colMiles')]: e.miles,
+        [t('colDate')]: dateStr,
+        [t('colDay')]: dayStr,
+        [t('colAddress')]: it.address||'',
       };
-      TYPES.forEach(k => { row[lbl(k)] = e[k]||0; });
-      row[t('colTotalApts')] = e.totalApts||0;
-      row[t('colBeddingPcs')] = e.beddingCount||0;
-      row[t('colBeddingValue')] = (e.beddingEarned||0).toFixed(2);
-      row[t('colBaseEarnings')] = (e.earnedBase||0).toFixed(2);
-      row[t('colExtra')] = (e.extra||0).toFixed(2);
-      row[t('colExtraReason')] = e.extraReason||'';
-      row[t('colTotal')] = (e.earned||0).toFixed(2);
-      row[t('colNotes')] = e.notes||'';
+      TYPES.forEach(k => { row[lbl(k)] = (k===it.type) ? 1 : ''; });
       return row;
     });
+
+    const dayTotal = {
+      [t('colDate')]: dateStr,
+      [t('colDay')]: t('dayTotalLabel'),
+      [t('colAddress')]: '',
+      [t('colStart')]: e.start, [t('colEnd')]: e.end, [t('colHours')]: e.hoursWorked, [t('colMiles')]: e.miles,
+    };
+    TYPES.forEach(k => { dayTotal[lbl(k)] = e[k]||0; });
+    dayTotal[t('colTotalApts')] = e.totalApts||0;
+    dayTotal[t('colBeddingPcs')] = e.beddingCount||0;
+    dayTotal[t('colBeddingValue')] = (e.beddingEarned||0).toFixed(2);
+    dayTotal[t('colBaseEarnings')] = (e.earnedBase||0).toFixed(2);
+    dayTotal[t('colExtra')] = (e.extra||0).toFixed(2);
+    dayTotal[t('colExtraReason')] = e.extraReason||'';
+    dayTotal[t('colTotal')] = (e.earned||0).toFixed(2);
+    dayTotal[t('colNotes')] = e.notes||'';
+
+    return [...objectRows, dayTotal];
   });
 
   // totals row
-  const sum = {[t('colObjectNr')]: '', [t('colDate')]: t('sumLabel')};
+  const sum = {[t('colDate')]: t('sumLabel')};
   sum[t('colHours')] = filtered.reduce((s,e)=>s+parseFloat(e.hoursWorked||0),0).toFixed(2);
   sum[t('colMiles')] = filtered.reduce((s,e)=>s+parseFloat(e.miles||0),0).toFixed(2);
   TYPES.forEach(k=>{ sum[lbl(k)]=filtered.reduce((s,e)=>s+(e[k]||0),0); });
