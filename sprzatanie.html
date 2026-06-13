@@ -325,45 +325,6 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
     </div>
 
     <div class="card">
-      <h2 data-i18n="cardSupabaseConfig">ℹ️ Konfiguracja Supabase</h2>
-      <div id="sb-config-status" class="hidden" style="background:var(--ok-bg,#eafaf0);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.85rem">
-        <span data-i18n="sbConfigured">✅ Supabase jest skonfigurowany – nie trzeba wpisywać tego ponownie.</span>
-        <button class="btn btn-out" style="margin-top:8px;display:block" onclick="toggleSbConfigForm()" data-i18n="btnChangeConfig">Zmień konfigurację</button>
-      </div>
-      <div id="sb-config-form">
-      <div class="setup-steps">
-        <p style="font-size:.82rem;color:var(--mt);margin-bottom:8px" data-i18n="setupIntro">Aby konto działało, skonfiguruj Supabase (raz, za darmo):</p>
-        <ol data-i18n-html="setupSteps">
-          <li>Wejdź na <a href="https://supabase.com" target="_blank">supabase.com</a> → <strong>Sign in</strong> → <strong>New project</strong></li>
-          <li>Wpisz nazwę projektu, hasło do bazy, wybierz region → <strong>Create new project</strong> (poczekaj ok. 1-2 min)</li>
-          <li>W menu po lewej: <strong>SQL Editor</strong> → <strong>New query</strong> → wklej poniższy kod SQL → <strong>Run</strong> (tworzy tabelę i zabezpieczenia)</li>
-          <li>W menu po lewej: <strong>Project Settings</strong> (ikona koła zębatego) → <strong>Data API</strong> → skopiuj <strong>Project URL</strong></li>
-          <li>Tam samo, zakładka <strong>API Keys</strong> → skopiuj klucz <strong>anon public</strong></li>
-          <li>Wklej oba poniżej i zapisz konfigurację</li>
-        </ol>
-      </div>
-      <div class="field"><label data-i18n="labelSqlEditor">SQL do wklejenia w SQL Editor</label><textarea readonly style="min-height:170px;font-size:.72rem;font-family:monospace" onclick="this.select()">create table public.entries (
-  user_id uuid references auth.users(id) on delete cascade not null,
-  date date not null,
-  data jsonb not null,
-  updated_at timestamptz default now(),
-  primary key (user_id, date)
-);
-
-alter table public.entries enable row level security;
-
-create policy "Users can manage own entries"
-on public.entries for all
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id);</textarea></div>
-      <div class="field"><label data-i18n="labelProjectUrl">Project URL</label><input type="text" id="sb-url-in" placeholder="https://xxxxxxxx.supabase.co"></div>
-      <div class="field"><label data-i18n="labelAnonKey">Anon public key</label><input type="text" id="sb-key-in" placeholder="eyJhbGciOi..." style="font-family:monospace;font-size:.78rem"></div>
-      <button class="btn btn-pr" onclick="saveSupabaseConfig()" data-i18n="btnSaveConfig">💾 Zapisz konfigurację</button>
-      <p id="sb-err" style="color:var(--ng);font-size:.8rem;margin-top:8px;text-align:center"></p>
-      </div>
-    </div>
-
-    <div class="card">
       <h2 data-i18n="cardLocalBackup">💾 Lokalny backup</h2>
       <p style="font-size:.82rem;color:var(--mt);margin-bottom:11px" data-i18n="localBackupDesc">Bez konta możesz ręcznie eksportować i importować dane.</p>
       <button class="btn btn-ok" style="margin-bottom:8px" onclick="exportBackup()" data-i18n="btnDownloadBackup">📥 Pobierz backup JSON</button>
@@ -647,16 +608,6 @@ function initSupabase() {
     }
   } catch { return; }
 
-  // pre-fill the config fields and show the "already configured" status
-  // so the user doesn't think they need to re-enter the URL/key every time
-  const urlIn = document.getElementById('sb-url-in');
-  const keyIn = document.getElementById('sb-key-in');
-  if (urlIn) urlIn.value = cfg.url;
-  if (keyIn) keyIn.value = cfg.anonKey;
-  const status = document.getElementById('sb-config-status');
-  const form = document.getElementById('sb-config-form');
-  if (status && form) { status.classList.remove('hidden'); form.classList.add('hidden'); }
-
   sbClient = supabase.createClient(cfg.url, cfg.anonKey);
 
   sbClient.auth.onAuthStateChange((event, session) => {
@@ -670,36 +621,6 @@ function initSupabase() {
     updateAccountUI();
     if (currentUser) syncFromCloud();
   });
-}
-
-function toggleSbConfigForm() {
-  document.getElementById('sb-config-form').classList.remove('hidden');
-  document.getElementById('sb-config-status').classList.add('hidden');
-}
-
-function saveSupabaseConfig() {
-  const rawUrl = document.getElementById('sb-url-in').value.trim();
-  const anonKey = document.getElementById('sb-key-in').value.trim();
-  if (!rawUrl || !anonKey) {
-    document.getElementById('sb-err').textContent = t('toastEnterUrlKey');
-    return;
-  }
-  let url;
-  try {
-    // normalize to origin only (strip any path like /rest/v1, /auth/v1, trailing slash)
-    url = new URL(rawUrl).origin;
-  } catch {
-    document.getElementById('sb-err').textContent = t('toastInvalidUrl');
-    return;
-  }
-  try {
-    localStorage.setItem('sb_config', JSON.stringify({url, anonKey}));
-    initSupabase();
-    toast(t('toastConfigSaved'));
-    document.getElementById('sb-err').textContent = '';
-  } catch(e) {
-    document.getElementById('sb-err').textContent = t('toastConfigSaveError', e.message);
-  }
 }
 
 // ══════════════════════════════════════════════
@@ -869,29 +790,63 @@ function importExcel(ev) {
       const dateKeys   = [I18N.pl.colDate, I18N.en.colDate];
       const sumLabels  = [I18N.pl.sumLabel, I18N.en.sumLabel];
 
+      // extra column-name variants seen in custom (non-app-export) spreadsheets
+      const TYPE_SYNONYMS = {
+        a1b: ['Apart. 1B'], a2b: ['Apart. 2B'], a3b: ['Apart. 3B'], a4b: ['Apart. 4B'],
+        klatka: ['Schody']
+      };
+      const ADDRESS_KEYS = ['Nazwa ulicy', 'Street name'];
+      const COST_KEYS    = ['Koszty £', 'Costs £'];
+      const DIRTY_KEYS   = ['Brudny apartament?', 'Dirty apartment?'];
+
       const entries = [];
       for (const row of rows1) {
         const dateRaw = get(row, ...dateKeys);
         if (!dateRaw || sumLabels.includes(dateRaw)) continue;
+        const earnedBase = parseFloat(get(row, I18N.pl.colBaseEarnings, I18N.en.colBaseEarnings, 'Zarobek z dnia bez doplaty', 'Earnings without surcharge')) || 0;
+        const extra      = parseFloat(get(row, I18N.pl.colExtra, I18N.en.colExtra)) || 0;
+        const totalRaw   = get(row, I18N.pl.colTotal, I18N.en.colTotal);
         const entry = {
           date: toDateStr(dateRaw),
           start: String(get(row, I18N.pl.colStart, I18N.en.colStart) || ''),
           end:   String(get(row, I18N.pl.colEnd, I18N.en.colEnd) || ''),
-          hoursWorked:  parseFloat(get(row, I18N.pl.colHours, I18N.en.colHours)) || 0,
+          hoursWorked:  parseFloat(get(row, I18N.pl.colHours, I18N.en.colHours, 'Godziny', 'Hours')) || 0,
           miles:        parseFloat(get(row, I18N.pl.colMiles, I18N.en.colMiles)) || 0,
           totalApts:    parseInt(get(row, I18N.pl.colTotalApts, I18N.en.colTotalApts)) || 0,
           beddingCount: parseInt(get(row, I18N.pl.colBeddingPcs, I18N.en.colBeddingPcs)) || 0,
           beddingEarned: parseFloat(get(row, I18N.pl.colBeddingValue, I18N.en.colBeddingValue)) || 0,
-          earnedBase:   parseFloat(get(row, I18N.pl.colBaseEarnings, I18N.en.colBaseEarnings)) || 0,
-          extra:        parseFloat(get(row, I18N.pl.colExtra, I18N.en.colExtra)) || 0,
+          earnedBase,
+          extra,
           extraReason:  String(get(row, I18N.pl.colExtraReason, I18N.en.colExtraReason) || ''),
-          earned:       parseFloat(get(row, I18N.pl.colTotal, I18N.en.colTotal)) || 0,
+          earned:       totalRaw !== undefined ? (parseFloat(totalRaw) || 0) : (earnedBase + extra),
           notes:        String(get(row, I18N.pl.colNotes, I18N.en.colNotes) || ''),
           items: []
         };
         TYPES.forEach(k => {
-          entry[k] = parseInt(get(row, LABELS.pl[k], LABELS.en[k])) || 0;
+          entry[k] = parseInt(get(row, LABELS.pl[k], LABELS.en[k], ...(TYPE_SYNONYMS[k]||[]))) || 0;
         });
+        if (!entry.totalApts) entry.totalApts = TYPES.reduce((s,k)=>s+entry[k],0);
+
+        // extra info from custom spreadsheets that has no dedicated app field -> append to notes
+        const extraNotes = [];
+        const costs = parseFloat(get(row, ...COST_KEYS));
+        if (costs) extraNotes.push(`Koszty: £${costs}`);
+        const dirty = get(row, ...DIRTY_KEYS);
+        if (dirty && String(dirty).trim() && !/^(nie|no|0)$/i.test(String(dirty).trim())) extraNotes.push(`Brudny apartament: ${dirty}`);
+        if (extraNotes.length) entry.notes = [entry.notes, ...extraNotes].filter(Boolean).join(' | ');
+
+        // build items from per-type counts when there's no dedicated address sheet
+        const address = String(get(row, ...ADDRESS_KEYS) || '');
+        if (address) {
+          let first = true;
+          TYPES.forEach(k => {
+            for (let i=0; i<entry[k]; i++) {
+              entry.items.push({ type: k, address: first ? address : '', rate: RATES[k] });
+              first = false;
+            }
+          });
+        }
+
         entries.push(entry);
       }
       if (!entries.length) throw new Error('empty');
