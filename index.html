@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="pl" id="html-root">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sprzątanie">
+<meta name="theme-color" content="#4f6072">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title id="page-title">Sprzątanie – dziennik pracy</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --pr:#4f6072;--prd:#3a4d5e;--prl:#dde4eb;
+  --ok:#4e7260;--okl:#d8eae0;
+  --ng:#8a4f4f;--ngl:#f0dada;
+  --wa:#7a6438;--wal:#f5edcf;
+  --bg:#edecea;--card:#f7f6f4;--card2:#fff;
+  --tx:#2a2d32;--mt:#6b7280;--br:#d8d5d0;--r:13px
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;padding-bottom:90px}
+
+/* header */
+header{background:var(--pr);color:#e8ecf0;padding:14px 16px 10px;position:sticky;top:0;z-index:10;box-shadow:0 2px 6px rgba(0,0,0,.18)}
+header h1{font-size:1.05rem;font-weight:700}
+header p{font-size:.72rem;opacity:.7;margin-top:1px}
+.hdr-row{display:flex;align-items:center;justify-content:space-between}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.sync-badge{font-size:.7rem;background:rgba(255,255,255,.15);border-radius:20px;padding:3px 9px;cursor:pointer}
+.sync-badge.online{background:rgba(78,114,96,.5)}
+.lang-switch{display:flex;gap:4px}
+.lang-btn{font-size:.7rem;background:rgba(255,255,255,.15);border:none;border-radius:20px;padding:3px 9px;cursor:pointer;color:#e8ecf0;font-weight:700}
+.lang-btn.active{background:rgba(255,255,255,.45)}
+
+/* nav */
+nav{display:flex;background:var(--card2);border-bottom:1px solid var(--br);position:sticky;top:56px;z-index:9;overflow-x:auto}
+nav button{flex:1;min-width:60px;padding:11px 4px;border:none;background:none;font-size:.75rem;font-weight:600;color:var(--mt);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
+
+/* tab */
+.tab{display:none;padding:13px}
+.tab.active{display:block}
+
+/* card */
+.card{background:var(--card);border-radius:var(--r);padding:15px;margin-bottom:11px;border:1px solid var(--br);box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card h2{font-size:.9rem;font-weight:700;margin-bottom:12px;color:var(--pr);display:flex;align-items:center;gap:6px}
+.sec-lbl{font-size:.7rem;font-weight:700;color:var(--mt);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+
+/* field */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:.75rem;font-weight:600;color:var(--mt);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.field input,.field textarea,.field select{
+  width:100%;padding:10px 12px;border:1.5px solid var(--br);border-radius:9px;
+  font-size:.92rem;color:var(--tx);background:var(--card2);-webkit-appearance:none;
+  transition:border .2s;font-family:inherit
+}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--pr)}
+.field textarea{resize:vertical;min-height:66px}
+.field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+
+/* time row */
+.time-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.hours-display{background:var(--okl);border:1px solid #a8cbb8;border-radius:9px;padding:9px 12px;text-align:center;font-weight:700;color:var(--ok);font-size:.88rem;margin-top:4px}
+
+/* btn */
+.btn{display:block;width:100%;padding:13px;border:none;border-radius:var(--r);font-size:.9rem;font-weight:700;cursor:pointer;transition:background .15s,transform .1s}
+.btn:active{transform:scale(.98)}
+.btn-pr{background:var(--pr);color:#e8ecf0}
+.btn-ok{background:var(--ok);color:#e8f5ee}
+.btn-ng{background:var(--ng);color:#f5e8e8}
+.btn-out{background:var(--card2);color:var(--pr);border:1.5px solid var(--pr)}
+.btn-sm{display:inline-block;width:auto;padding:7px 14px;font-size:.8rem}
+
+/* add item row */
+.add-item-form{background:var(--card2);border:1.5px dashed var(--br);border-radius:10px;padding:12px;margin-bottom:10px}
+.add-item-row{display:flex;gap:8px;align-items:flex-end}
+.add-item-row .field{flex:1;margin-bottom:0}
+
+/* items list */
+.items-list{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
+.item-row{display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--br);border-radius:9px;padding:9px 11px}
+.item-row .item-type{font-size:.78rem;font-weight:800;color:var(--pr);min-width:62px}
+.item-row .item-addr{flex:1;font-size:.82rem;color:var(--mt);font-style:italic;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.item-row .item-price{font-size:.82rem;font-weight:700;color:var(--ok);margin-left:4px}
+.item-del{background:var(--ngl);color:var(--ng);border:none;border-radius:6px;padding:4px 9px;font-size:.78rem;font-weight:700;cursor:pointer;flex-shrink:0}
+
+/* bedding counter */
+.bedding-row{display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--br);border-radius:9px;padding:10px 13px}
+.bedding-row span{flex:1;font-size:.85rem;color:var(--mt);font-weight:600}
+.counter{display:flex;align-items:center;gap:7px}
+.cbtn{width:32px;height:32px;border-radius:50%;border:none;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.cbtn.m{background:var(--ngl);color:var(--ng)}
+.cbtn.p{background:var(--okl);color:var(--ok)}
+.cval{font-size:1.25rem;font-weight:800;min-width:24px;text-align:center}
+
+/* extra row */
+.extra-row{display:flex;align-items:center;gap:8px}
+.extra-row span{font-weight:700;color:var(--mt);font-size:.88rem}
+.extra-row input{flex:1;padding:10px 12px;border:1.5px solid var(--br);border-radius:9px;font-size:.92rem;color:var(--tx)}
+
+/* earnings box */
+.earn-box{background:var(--card2);border:1.5px solid var(--prl);border-radius:var(--r);overflow:hidden}
+.er{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--br);font-size:.85rem}
+.er:last-child{border-bottom:none}
+.er.hdr{background:var(--prl);color:var(--prd);font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:5px 12px}
+.er.total{background:var(--pr);color:#e8ecf0;font-weight:800;font-size:.95rem;padding:11px 12px}
+.er.total .erv{font-size:1rem}
+.ern{color:var(--mt)}.erc{font-size:.75rem;color:var(--mt);margin-left:5px}.erv{font-weight:700;color:var(--pr)}
+.earn-empty{text-align:center;padding:18px;color:var(--mt);font-size:.82rem;font-style:italic}
+
+/* history */
+.hist-item{background:var(--card);border:1px solid var(--br);border-radius:var(--r);padding:12px 14px;margin-bottom:8px}
+.hi-date{font-weight:700;font-size:.9rem}
+.hi-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.tag{background:var(--prl);color:var(--prd);border-radius:5px;padding:2px 7px;font-size:.72rem;font-weight:600}
+.tag.r{background:var(--ngl);color:var(--ng)}
+.tag.g{background:var(--okl);color:var(--ok)}
+.tag.y{background:var(--wal);color:var(--wa)}
+.tag.n{background:#f0ede8;color:#6b5a40;font-style:italic;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.del-btn{background:var(--ngl);color:var(--ng);border:none;border-radius:6px;padding:4px 8px;font-size:.72rem;font-weight:700;cursor:pointer;flex-shrink:0}
+
+/* filter */
+.filter-row{display:flex;gap:8px;margin-bottom:11px;align-items:center}
+.filter-row input{flex:1;padding:9px 12px;border:1.5px solid var(--br);border-radius:9px;font-size:.85rem;background:var(--card2);color:var(--tx)}
+
+/* month summary */
+.month-stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:11px}
+.mstat{background:var(--card2);border:1px solid var(--br);border-radius:var(--r);padding:13px;text-align:center}
+.mstat .mv{font-size:1.4rem;font-weight:800;color:var(--pr)}
+.mstat .ml{font-size:.7rem;color:var(--mt);margin-top:2px;font-weight:600}
+.sum-box{background:var(--pr);color:#e8ecf0;border-radius:var(--r);padding:15px;margin-bottom:11px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.sv{font-size:1.4rem;font-weight:800}.sl{font-size:.66rem;opacity:.8;margin-top:1px}
+.addr-list{margin-top:8px}
+.addr-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--br);font-size:.82rem}
+.addr-row:last-child{border-bottom:none}
+.addr-row .at{color:var(--mt)}
+.addr-row .aa{font-weight:600}
+
+/* stats */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:11px}
+.sc{background:var(--card2);border:1px solid var(--br);border-radius:var(--r);padding:12px;text-align:center}
+.sc .sv{font-size:1.35rem;font-weight:800;color:var(--pr)}
+.sc .sl{font-size:.7rem;color:var(--mt);margin-top:2px;font-weight:600}
+
+/* empty */
+.empty{text-align:center;padding:40px 16px;color:var(--mt)}
+.empty .ei{font-size:2.6rem;margin-bottom:9px}
+.empty p{font-size:.85rem}
+
+/* toast */
+.toast{position:fixed;bottom:88px;left:50%;transform:translateX(-50%) translateY(20px);background:#2a2d32;color:#e8ecf0;padding:10px 18px;border-radius:50px;font-size:.82rem;font-weight:600;opacity:0;transition:all .3s;z-index:200;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--card2);border-radius:var(--r);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:1rem;font-weight:700;margin-bottom:14px;color:var(--pr)}
+.modal-close{float:right;background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--mt)}
+.hidden{display:none}
+
+/* account */
+.user-card{background:var(--okl);border:1px solid #a8cbb8;border-radius:var(--r);padding:14px;margin-bottom:11px;text-align:center}
+.user-card .ue{font-weight:700;font-size:.95rem}
+.user-card .us{font-size:.78rem;color:var(--ok);margin-top:3px}
+.setup-steps{background:var(--card2);border:1px solid var(--br);border-radius:var(--r);padding:14px;margin-bottom:11px}
+.setup-steps ol{padding-left:18px;font-size:.83rem;color:var(--mt);line-height:1.9}
+.setup-steps a{color:var(--pr);font-weight:600}
+.setup-steps code{background:var(--bg);border-radius:4px;padding:1px 5px;font-size:.8rem}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-row">
+    <div><h1 data-i18n="appTitle">🧹 Dziennik Sprzątania</h1><p id="hdr-sub" data-i18n="appSubtitle">Zapisuj każdy dzień pracy</p></div>
+    <div class="hdr-right">
+      <div class="lang-switch">
+        <button class="lang-btn" data-lang="pl" onclick="setLang('pl')">PL</button>
+        <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+      </div>
+      <div class="sync-badge" id="sync-badge" data-i18n="account" onclick="showTab('account')">☁ Konto</div>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('form')" data-i18n="navEntry">➕ Wpis</button>
+  <button onclick="showTab('history')" data-i18n="navHistory">📋 Historia</button>
+  <button onclick="showTab('month')" data-i18n="navMonth">📅 Miesiąc</button>
+  <button onclick="showTab('stats')" data-i18n="navStats">📊 Statystyki</button>
+  <button onclick="showTab('account')" data-i18n="navAccount">👤 Konto</button>
+</nav>
+
+<!-- ═══════════════ NOWY WPIS ═══════════════ -->
+<div id="tab-form" class="tab active">
+
+  <div class="card">
+    <h2 data-i18n="cardDateTime">📅 Data i czas pracy</h2>
+    <div class="field"><label data-i18n="labelDate">Data</label><input type="date" id="f-date"></div>
+    <div class="time-row">
+      <div class="field"><label data-i18n="labelStart">Początek pracy</label><input type="time" id="f-start"></div>
+      <div class="field"><label data-i18n="labelEnd">Koniec pracy</label><input type="time" id="f-end"></div>
+    </div>
+    <div class="hours-display" id="hours-display" data-i18n="hoursPlaceholder">⏱ Wpisz godziny start i koniec</div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="cardMiles">🚗 Mile</h2>
+    <div class="field" style="margin-bottom:0"><label data-i18n="labelMilesDriven">Przejechane mile</label><input type="number" id="f-miles" placeholder="0" min="0" step="0.1"></div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="cardProperties">🏠 Obiekty</h2>
+    <!-- Add form -->
+    <div class="add-item-form">
+      <div class="sec-lbl" data-i18n="addProperty">Dodaj obiekt</div>
+      <div class="add-item-row">
+        <div class="field"><label data-i18n="labelType">Typ</label>
+          <select id="add-type"></select>
+        </div>
+        <div class="field" style="flex:2"><label data-i18n="labelAddress">Adres / ulica (opcjonalnie)</label><input type="text" id="add-addr" data-i18n-ph="addressPlaceholder" placeholder="np. 108 Nicholson Street"></div>
+      </div>
+      <button class="btn btn-pr btn-sm" style="margin-top:8px" onclick="addItem()" data-i18n="btnAdd">+ Dodaj</button>
+    </div>
+    <!-- List -->
+    <div id="items-list" class="items-list"></div>
+    <div id="items-empty" style="text-align:center;padding:12px;color:var(--mt);font-size:.82rem;font-style:italic" data-i18n="noProperties">Brak obiektów – dodaj powyżej</div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="cardEarnings">💷 Zarobki dnia</h2>
+    <div id="earn-preview"></div>
+
+    <div style="margin-top:12px">
+      <div class="sec-lbl" data-i18n="beddingTitle">🛏 Pościel z garażu (£5 / szt.)</div>
+      <div class="bedding-row">
+        <span data-i18n="beddingLabel">Liczba pobranych pościeli</span>
+        <div class="counter">
+          <button class="cbtn m" onclick="chgBed(-1)">−</button>
+          <span class="cval" id="val-bed">0</span>
+          <button class="cbtn p" onclick="chgBed(1)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="sec-lbl" data-i18n="extraTitle">Inna dopłata</div>
+      <div class="extra-row"><span>£</span><input type="number" id="f-extra" placeholder="0.00" min="0" step="0.01" oninput="updEarn()"></div>
+      <div class="field" style="margin-top:9px;margin-bottom:0"><label data-i18n="labelExtraReason">Powód dopłaty</label><input type="text" id="f-extra-reason" data-i18n-ph="extraReasonPlaceholder" placeholder="np. bardzo brudno, extra praca…" oninput="updEarn()"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="cardNotes">📝 Uwagi / Komentarz</h2>
+    <div class="field" style="margin-bottom:0"><textarea id="f-notes" data-i18n-ph="notesPlaceholder" placeholder="Wpisz uwagi do tego dnia…"></textarea></div>
+  </div>
+
+  <button class="btn btn-pr" onclick="saveEntry()" data-i18n="btnSaveDay">💾 Zapisz dzień</button>
+</div>
+
+<!-- ═══════════════ HISTORIA ═══════════════ -->
+<div id="tab-history" class="tab">
+  <div class="filter-row">
+    <input type="month" id="filter-month" onchange="renderHistory()">
+    <button class="btn btn-out btn-sm" onclick="clearFilter()" data-i18n="btnAll">Wszystkie</button>
+  </div>
+  <button class="btn btn-ok" style="margin-bottom:11px" onclick="exportExcel()" data-i18n="btnExportExcel">📥 Eksportuj do Excel</button>
+  <div id="history-list"></div>
+</div>
+
+<!-- ═══════════════ MIESIĄC ═══════════════ -->
+<div id="tab-month" class="tab">
+  <div class="filter-row">
+    <input type="month" id="month-picker">
+    <button class="btn btn-pr btn-sm" onclick="renderMonth()" data-i18n="btnShow">Pokaż</button>
+  </div>
+  <div id="month-content"></div>
+</div>
+
+<!-- ═══════════════ STATYSTYKI ═══════════════ -->
+<div id="tab-stats" class="tab">
+  <div id="stats-content"></div>
+</div>
+
+<!-- ═══════════════ KONTO ═══════════════ -->
+<div id="tab-account" class="tab">
+  <!-- Logged in view -->
+  <div id="acc-logged" class="hidden">
+    <div class="user-card">
+      <div class="ue" id="acc-email"></div>
+      <div class="us" data-i18n="syncedCloud">✅ Dane synchronizowane z chmurą</div>
+    </div>
+    <button class="btn btn-ok" style="margin-bottom:9px" onclick="syncNow()" data-i18n="btnSyncNow">🔄 Synchronizuj teraz</button>
+    <button class="btn btn-out" style="margin-bottom:9px" onclick="exportBackup()" data-i18n="btnDownloadBackup">💾 Pobierz backup JSON</button>
+    <button class="btn btn-ng" onclick="doLogout()" data-i18n="btnLogout">Wyloguj się</button>
+  </div>
+
+  <!-- Logged out view -->
+  <div id="acc-loggedout">
+    <div class="card">
+      <h2 data-i18n="cardSyncAccount">☁ Synchronizacja & Konto</h2>
+      <p style="font-size:.83rem;color:var(--mt);margin-bottom:14px;line-height:1.6" data-i18n="syncAccountDesc">Utwórz bezpłatne konto Supabase aby synchronizować dane między telefonem a komputerem. Dane są też zawsze zapisane lokalnie.</p>
+
+      <div id="acc-form-login">
+        <div class="field"><label data-i18n="labelEmail">Email</label><input type="email" id="acc-email-in" placeholder="twoj@email.com"></div>
+        <div class="field"><label data-i18n="labelPassword">Hasło</label><input type="password" id="acc-pass-in" data-i18n-ph="passwordPlaceholder" placeholder="minimum 6 znaków"></div>
+        <button class="btn btn-pr" style="margin-bottom:8px" onclick="doLogin()" data-i18n="btnLogin">Zaloguj się</button>
+        <button class="btn btn-out" onclick="showRegForm()" data-i18n="btnCreateAccount">Utwórz nowe konto</button>
+        <p id="acc-err" style="color:var(--ng);font-size:.8rem;margin-top:8px;text-align:center"></p>
+      </div>
+
+      <div id="acc-form-reg" class="hidden">
+        <div class="field"><label data-i18n="labelEmail">Email</label><input type="email" id="reg-email-in" placeholder="twoj@email.com"></div>
+        <div class="field"><label data-i18n="labelPassword">Hasło</label><input type="password" id="reg-pass-in" data-i18n-ph="passwordPlaceholder" placeholder="minimum 6 znaków"></div>
+        <div class="field"><label data-i18n="labelRepeatPassword">Powtórz hasło</label><input type="password" id="reg-pass2-in" data-i18n-ph="repeatPasswordPlaceholder" placeholder="powtórz hasło"></div>
+        <button class="btn btn-pr" style="margin-bottom:8px" onclick="doRegister()" data-i18n="btnCreateAccount2">Utwórz konto</button>
+        <button class="btn btn-out" onclick="showLoginForm()" data-i18n="btnHaveAccount">Mam już konto</button>
+        <p id="reg-err" style="color:var(--ng);font-size:.8rem;margin-top:8px;text-align:center"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="cardSupabaseConfig">ℹ️ Konfiguracja Supabase</h2>
+      <div id="sb-config-status" class="hidden" style="background:var(--ok-bg,#eafaf0);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.85rem">
+        <span data-i18n="sbConfigured">✅ Supabase jest skonfigurowany – nie trzeba wpisywać tego ponownie.</span>
+        <button class="btn btn-out" style="margin-top:8px;display:block" onclick="toggleSbConfigForm()" data-i18n="btnChangeConfig">Zmień konfigurację</button>
+      </div>
+      <div id="sb-config-form">
+      <div class="setup-steps">
+        <p style="font-size:.82rem;color:var(--mt);margin-bottom:8px" data-i18n="setupIntro">Aby konto działało, skonfiguruj Supabase (raz, za darmo):</p>
+        <ol data-i18n-html="setupSteps">
+          <li>Wejdź na <a href="https://supabase.com" target="_blank">supabase.com</a> → <strong>Sign in</strong> → <strong>New project</strong></li>
+          <li>Wpisz nazwę projektu, hasło do bazy, wybierz region → <strong>Create new project</strong> (poczekaj ok. 1-2 min)</li>
+          <li>W menu po lewej: <strong>SQL Editor</strong> → <strong>New query</strong> → wklej poniższy kod SQL → <strong>Run</strong> (tworzy tabelę i zabezpieczenia)</li>
+          <li>W menu po lewej: <strong>Project Settings</strong> (ikona koła zębatego) → <strong>Data API</strong> → skopiuj <strong>Project URL</strong></li>
+          <li>Tam samo, zakładka <strong>API Keys</strong> → skopiuj klucz <strong>anon public</strong></li>
+          <li>Wklej oba poniżej i zapisz konfigurację</li>
+        </ol>
+      </div>
+      <div class="field"><label data-i18n="labelSqlEditor">SQL do wklejenia w SQL Editor</label><textarea readonly style="min-height:170px;font-size:.72rem;font-family:monospace" onclick="this.select()">create table public.entries (
+  user_id uuid references auth.users(id) on delete cascade not null,
+  date date not null,
+  data jsonb not null,
+  updated_at timestamptz default now(),
+  primary key (user_id, date)
+);
+
+alter table public.entries enable row level security;
+
+create policy "Users can manage own entries"
+on public.entries for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);</textarea></div>
+      <div class="field"><label data-i18n="labelProjectUrl">Project URL</label><input type="text" id="sb-url-in" placeholder="https://xxxxxxxx.supabase.co"></div>
+      <div class="field"><label data-i18n="labelAnonKey">Anon public key</label><input type="text" id="sb-key-in" placeholder="eyJhbGciOi..." style="font-family:monospace;font-size:.78rem"></div>
+      <button class="btn btn-pr" onclick="saveSupabaseConfig()" data-i18n="btnSaveConfig">💾 Zapisz konfigurację</button>
+      <p id="sb-err" style="color:var(--ng);font-size:.8rem;margin-top:8px;text-align:center"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="cardLocalBackup">💾 Lokalny backup</h2>
+      <p style="font-size:.82rem;color:var(--mt);margin-bottom:11px" data-i18n="localBackupDesc">Bez konta możesz ręcznie eksportować i importować dane.</p>
+      <button class="btn btn-ok" style="margin-bottom:8px" onclick="exportBackup()" data-i18n="btnDownloadBackup">📥 Pobierz backup JSON</button>
+      <div class="field" style="margin-bottom:8px"><label data-i18n="labelImportBackup">Importuj backup</label><input type="file" id="backup-file" accept=".json" onchange="importBackup(event)"></div>
+      <div class="field" style="margin-bottom:8px"><label data-i18n="labelImportExcel">Importuj z Excela</label><input type="file" id="excel-file" accept=".xlsx,.xls" onchange="importExcel(event)"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+// I18N
+// ══════════════════════════════════════════════
+let LANG = localStorage.getItem('app_lang') || 'pl';
+
+const I18N = {
+  pl: {
+    appTitle: '🧹 Dziennik Sprzątania',
+    appSubtitle: 'Zapisuj każdy dzień pracy',
+    account: '☁ Konto',
+    online: '☁ Online',
+    navEntry: '➕ Wpis', navHistory: '📋 Historia', navMonth: '📅 Miesiąc', navStats: '📊 Statystyki', navAccount: '👤 Konto',
+    cardDateTime: '📅 Data i czas pracy',
+    labelDate: 'Data', labelStart: 'Początek pracy', labelEnd: 'Koniec pracy',
+    hoursPlaceholder: '⏱ Wpisz godziny start i koniec',
+    cardMiles: '🚗 Mile', labelMilesDriven: 'Przejechane mile',
+    cardProperties: '🏠 Obiekty', addProperty: 'Dodaj obiekt', labelType: 'Typ',
+    groupApartments: 'Apartamenty', groupHotels: 'Hotele', groupOther: 'Inne',
+    labelAddress: 'Adres / ulica (opcjonalnie)', addressPlaceholder: 'np. 108 Nicholson Street',
+    btnAdd: '+ Dodaj', noProperties: 'Brak obiektów – dodaj powyżej', noAddress: 'brak adresu',
+    cardEarnings: '💷 Zarobki dnia',
+    beddingTitle: '🛏 Pościel z garażu (£5 / szt.)', beddingLabel: 'Liczba pobranych pościeli', beddingItem: 'Pościel z garażu',
+    extraTitle: 'Inna dopłata', labelExtraReason: 'Powód dopłaty', extraReasonPlaceholder: 'np. bardzo brudno, extra praca…', extraDefaultReason: 'Dopłata',
+    total: '💷 RAZEM', earnEmpty: 'Dodaj obiekty aby zobaczyć zarobki',
+    sectionApartments: '🏠 Apartamenty', sectionHotels: '🏨 Hotele', sectionOther: '🪜 Inne', sectionBedding: '🛏 Pościel z garażu',
+    cardNotes: '📝 Uwagi / Komentarz', notesPlaceholder: 'Wpisz uwagi do tego dnia…',
+    btnSaveDay: '💾 Zapisz dzień',
+    btnAll: 'Wszystkie', btnExportExcel: '📥 Eksportuj do Excel', btnShow: 'Pokaż',
+    syncedCloud: '✅ Dane synchronizowane z chmurą', btnSyncNow: '🔄 Synchronizuj teraz', btnDownloadBackup: '💾 Pobierz backup JSON', btnLogout: 'Wyloguj się',
+    cardSyncAccount: '☁ Synchronizacja & Konto',
+    syncAccountDesc: 'Utwórz bezpłatne konto Supabase aby synchronizować dane między telefonem a komputerem. Dane są też zawsze zapisane lokalnie.',
+    labelEmail: 'Email', labelPassword: 'Hasło', passwordPlaceholder: 'minimum 6 znaków',
+    btnLogin: 'Zaloguj się', btnCreateAccount: 'Utwórz nowe konto',
+    labelRepeatPassword: 'Powtórz hasło', repeatPasswordPlaceholder: 'powtórz hasło',
+    btnCreateAccount2: 'Utwórz konto', btnHaveAccount: 'Mam już konto',
+    cardSupabaseConfig: 'ℹ️ Konfiguracja Supabase',
+    setupIntro: 'Aby konto działało, skonfiguruj Supabase (raz, za darmo):',
+    setupSteps: `
+      <li>Wejdź na <a href="https://supabase.com" target="_blank">supabase.com</a> → <strong>Sign in</strong> → <strong>New project</strong></li>
+      <li>Wpisz nazwę projektu, hasło do bazy, wybierz region → <strong>Create new project</strong> (poczekaj ok. 1-2 min)</li>
+      <li>W menu po lewej: <strong>SQL Editor</strong> → <strong>New query</strong> → wklej poniższy kod SQL → <strong>Run</strong> (tworzy tabelę i zabezpieczenia)</li>
+      <li>W menu po lewej: <strong>Project Settings</strong> (ikona koła zębatego) → <strong>Data API</strong> → skopiuj <strong>Project URL</strong></li>
+      <li>Tam samo, zakładka <strong>API Keys</strong> → skopiuj klucz <strong>anon public</strong></li>
+      <li>Wklej oba poniżej i zapisz konfigurację</li>`,
+    labelSqlEditor: 'SQL do wklejenia w SQL Editor', labelProjectUrl: 'Project URL', labelAnonKey: 'Anon public key',
+    btnSaveConfig: '💾 Zapisz konfigurację',
+    sbConfigured: '✅ Supabase jest skonfigurowany – nie trzeba wpisywać tego ponownie.', btnChangeConfig: 'Zmień konfigurację',
+    cardLocalBackup: '💾 Lokalny backup', localBackupDesc: 'Bez konta możesz ręcznie eksportować i importować dane.', labelImportBackup: 'Importuj backup',
+    labelImportExcel: 'Importuj z pliku Excel (.xlsx)',
+    toastImportExcelError: '⚠️ Błąd importu Excela – sprawdź, czy plik pochodzi z eksportu tej aplikacji',
+    // toasts / messages
+    toastConfigSaved: '✅ Konfiguracja zapisana – teraz możesz się zalogować',
+    toastLoggedIn: '✅ Zalogowano!', toastAccountCreated: '✅ Konto utworzone!', toastLoggedOut: '👋 Wylogowano',
+    toastSyncedFromCloud: '🔄 Zsynchronizowano z chmurą', toastSentToCloud: '✅ Dane wysłane do chmury', toastSyncError: '⚠️ Błąd synchronizacji',
+    toastBackupDownloaded: '✅ Backup pobrany',
+    toastImported: n => `✅ Zaimportowano ${n} wpisów`, toastImportError: '⚠️ Błąd importu – nieprawidłowy plik',
+    toastEnterDate: '⚠️ Wpisz datę', toastEnterStart: '⚠️ Wpisz godzinę początku', toastEnterEnd: '⚠️ Wpisz godzinę końca',
+    toastSaved: '✅ Zapisano!', toastDeleted: '🗑 Usunięto',
+    toastNoData: '⚠️ Brak danych', toastNoDataMonth: '⚠️ Brak danych za wybrany miesiąc', toastExcelDownloaded: '✅ Excel pobrany – 2 arkusze!',
+    toastNeedSupabaseConfig: '⚠️ Najpierw dodaj konfigurację Supabase', toastNotLoggedIn: '⚠️ Nie zalogowany',
+    toastEnterUrlKey: '⚠️ Wpisz Project URL i klucz anon public',
+    toastInvalidUrl: '⚠️ Nieprawidłowy Project URL (musi zaczynać się od https://)',
+    toastConfigSaveError: e => `⚠️ Błąd zapisu konfiguracji: ${e}`,
+    errPasswordMismatch: '⚠️ Hasła się nie zgadzają',
+    confirmOverwrite: 'Wpis dla tej daty już istnieje. Nadpisać?',
+    confirmDelete: 'Usunąć ten wpis?',
+    confirmExportAfterSave: 'Zapisano! Czy chcesz teraz wyeksportować dane do Excel?',
+    authErrInvalidCreds: '⚠️ Błędny email lub hasło',
+    authErrUserExists: '⚠️ Email już używany',
+    authErrInvalidEmail: '⚠️ Nieprawidłowy email',
+    authErrWeakPassword: '⚠️ Hasło za słabe (min. 6 znaków)',
+    authErrGeneric: m => `⚠️ Błąd: ${m}`,
+    // history
+    noEntries: 'Brak wpisów', inThisMonth: ' w tym miesiącu', moreSuffix: n => ` więcej`, milesShort: 'mil',
+    // month
+    selectMonth: 'Wybierz miesiąc', noDataFor: mf => `Brak danych za ${mf}`,
+    statDays: 'Dni pracy', statHours: 'Godzin', statEarnings: 'Zarobki',
+    statTotalProperties: 'Obiektów łącznie', statTotalMiles: 'Mil łącznie', statAvgPerDay: 'Śr. zarobek/dzień', statBedding: 'Pościele z garażu',
+    propertyTypesFor: name => `🏠 Typy obiektów – ${name}`, pieces: 'szt.',
+    addressesFor: name => `📍 Adresy – ${name}`, everyDayFor: name => `📋 Każdy dzień – ${name}`, properties: 'obiektów',
+    // stats
+    noData: 'Brak danych', statTotalEarnings: 'Zarobki łącznie', statApts: 'Apt. łącznie', statAvgHoursDay: 'Śr. godz./dzień', statAllTime: '🏠 Typy obiektów – wszystkie czasy',
+    // excel
+    colDate: 'Data', colDay: 'Dzień', colStart: 'Początek', colEnd: 'Koniec', colHours: 'Godz. pracy', colMiles: 'Mile',
+    colTotalApts: 'Apt. łącznie', colBeddingPcs: 'Pościel (szt.)', colBeddingValue: 'Pościel £', colBaseEarnings: 'Zarobki bazowe £',
+    colExtra: 'Dopłata £', colExtraReason: 'Powód dopłaty', colTotal: 'Łącznie £', colNotes: 'Uwagi', sumLabel: 'SUMA',
+    colType: 'Typ', colAddress: 'Adres', colRate: 'Stawka £', sheetSummary: 'Podsumowanie', sheetItems: 'Obiekty z adresami', noAddressData: 'Brak danych z adresami', infoCol: 'Info',
+  },
+  en: {
+    appTitle: '🧹 Cleaning Diary',
+    appSubtitle: 'Log every working day',
+    account: '☁ Account',
+    online: '☁ Online',
+    navEntry: '➕ Entry', navHistory: '📋 History', navMonth: '📅 Month', navStats: '📊 Stats', navAccount: '👤 Account',
+    cardDateTime: '📅 Date & work time',
+    labelDate: 'Date', labelStart: 'Start time', labelEnd: 'End time',
+    hoursPlaceholder: '⏱ Enter start and end time',
+    cardMiles: '🚗 Miles', labelMilesDriven: 'Miles driven',
+    cardProperties: '🏠 Properties', addProperty: 'Add property', labelType: 'Type',
+    groupApartments: 'Apartments', groupHotels: 'Hotels', groupOther: 'Other',
+    labelAddress: 'Address / street (optional)', addressPlaceholder: 'e.g. 108 Nicholson Street',
+    btnAdd: '+ Add', noProperties: 'No properties – add above', noAddress: 'no address',
+    cardEarnings: "💷 Today's earnings",
+    beddingTitle: '🛏 Bedding from garage (£5 / pc)', beddingLabel: 'Number of bedding sets taken', beddingItem: 'Bedding from garage',
+    extraTitle: 'Other surcharge', labelExtraReason: 'Surcharge reason', extraReasonPlaceholder: 'e.g. very dirty, extra work…', extraDefaultReason: 'Surcharge',
+    total: '💷 TOTAL', earnEmpty: 'Add properties to see earnings',
+    sectionApartments: '🏠 Apartments', sectionHotels: '🏨 Hotels', sectionOther: '🪜 Other', sectionBedding: '🛏 Bedding from garage',
+    cardNotes: '📝 Notes / Comments', notesPlaceholder: 'Enter notes for this day…',
+    btnSaveDay: '💾 Save day',
+    btnAll: 'All', btnExportExcel: '📥 Export to Excel', btnShow: 'Show',
+    syncedCloud: '✅ Data synced with cloud', btnSyncNow: '🔄 Sync now', btnDownloadBackup: '💾 Download JSON backup', btnLogout: 'Log out',
+    cardSyncAccount: '☁ Sync & Account',
+    syncAccountDesc: 'Create a free Supabase account to sync data between your phone and computer. Data is always saved locally too.',
+    labelEmail: 'Email', labelPassword: 'Password', passwordPlaceholder: 'minimum 6 characters',
+    btnLogin: 'Log in', btnCreateAccount: 'Create new account',
+    labelRepeatPassword: 'Repeat password', repeatPasswordPlaceholder: 'repeat password',
+    btnCreateAccount2: 'Create account', btnHaveAccount: 'I already have an account',
+    cardSupabaseConfig: 'ℹ️ Supabase configuration',
+    setupIntro: 'For the account to work, set up Supabase (once, for free):',
+    setupSteps: `
+      <li>Go to <a href="https://supabase.com" target="_blank">supabase.com</a> → <strong>Sign in</strong> → <strong>New project</strong></li>
+      <li>Enter a project name, database password, choose a region → <strong>Create new project</strong> (wait ~1-2 min)</li>
+      <li>In the left menu: <strong>SQL Editor</strong> → <strong>New query</strong> → paste the SQL below → <strong>Run</strong> (creates the table and security rules)</li>
+      <li>In the left menu: <strong>Project Settings</strong> (gear icon) → <strong>Data API</strong> → copy the <strong>Project URL</strong></li>
+      <li>Same place, <strong>API Keys</strong> tab → copy the <strong>anon public</strong> key</li>
+      <li>Paste both below and save the configuration</li>`,
+    labelSqlEditor: 'SQL to paste in SQL Editor', labelProjectUrl: 'Project URL', labelAnonKey: 'Anon public key',
+    btnSaveConfig: '💾 Save configuration',
+    sbConfigured: '✅ Supabase is already configured – no need to enter this again.', btnChangeConfig: 'Change configuration',
+    cardLocalBackup: '💾 Local backup', localBackupDesc: 'Without an account you can manually export and import data.', labelImportBackup: 'Import backup',
+    labelImportExcel: 'Import from Excel file (.xlsx)',
+    toastImportExcelError: '⚠️ Excel import error – check that the file comes from this app\'s export',
+    // toasts / messages
+    toastConfigSaved: '✅ Configuration saved – you can now log in',
+    toastLoggedIn: '✅ Logged in!', toastAccountCreated: '✅ Account created!', toastLoggedOut: '👋 Logged out',
+    toastSyncedFromCloud: '🔄 Synced with cloud', toastSentToCloud: '✅ Data sent to cloud', toastSyncError: '⚠️ Sync error',
+    toastBackupDownloaded: '✅ Backup downloaded',
+    toastImported: n => `✅ Imported ${n} entries`, toastImportError: '⚠️ Import error – invalid file',
+    toastEnterDate: '⚠️ Enter date', toastEnterStart: '⚠️ Enter start time', toastEnterEnd: '⚠️ Enter end time',
+    toastSaved: '✅ Saved!', toastDeleted: '🗑 Deleted',
+    toastNoData: '⚠️ No data', toastNoDataMonth: '⚠️ No data for selected month', toastExcelDownloaded: '✅ Excel downloaded – 2 sheets!',
+    toastNeedSupabaseConfig: '⚠️ First add Supabase configuration', toastNotLoggedIn: '⚠️ Not logged in',
+    toastEnterUrlKey: '⚠️ Enter Project URL and anon public key',
+    toastInvalidUrl: '⚠️ Invalid Project URL (must start with https://)',
+    toastConfigSaveError: e => `⚠️ Error saving configuration: ${e}`,
+    errPasswordMismatch: '⚠️ Passwords do not match',
+    confirmOverwrite: 'An entry for this date already exists. Overwrite?',
+    confirmDelete: 'Delete this entry?',
+    confirmExportAfterSave: 'Saved! Do you want to export the data to Excel now?',
+    authErrInvalidCreds: '⚠️ Invalid email or password',
+    authErrUserExists: '⚠️ Email already in use',
+    authErrInvalidEmail: '⚠️ Invalid email',
+    authErrWeakPassword: '⚠️ Password too weak (min. 6 characters)',
+    authErrGeneric: m => `⚠️ Error: ${m}`,
+    // history
+    noEntries: 'No entries', inThisMonth: ' this month', moreSuffix: n => ` more`, milesShort: 'mi',
+    // month
+    selectMonth: 'Select a month', noDataFor: mf => `No data for ${mf}`,
+    statDays: 'Work days', statHours: 'Hours', statEarnings: 'Earnings',
+    statTotalProperties: 'Total properties', statTotalMiles: 'Total miles', statAvgPerDay: 'Avg. earnings/day', statBedding: 'Bedding from garage',
+    propertyTypesFor: name => `🏠 Property types – ${name}`, pieces: 'pcs',
+    addressesFor: name => `📍 Addresses – ${name}`, everyDayFor: name => `📋 Every day – ${name}`, properties: 'properties',
+    // stats
+    noData: 'No data', statTotalEarnings: 'Total earnings', statApts: 'Total apts', statAvgHoursDay: 'Avg. hours/day', statAllTime: '🏠 Property types – all time',
+    // excel
+    colDate: 'Date', colDay: 'Day', colStart: 'Start', colEnd: 'End', colHours: 'Work hrs', colMiles: 'Miles',
+    colTotalApts: 'Total apts', colBeddingPcs: 'Bedding (pcs)', colBeddingValue: 'Bedding £', colBaseEarnings: 'Base earnings £',
+    colExtra: 'Surcharge £', colExtraReason: 'Surcharge reason', colTotal: 'Total £', colNotes: 'Notes', sumLabel: 'TOTAL',
+    colType: 'Type', colAddress: 'Address', colRate: 'Rate £', sheetSummary: 'Summary', sheetItems: 'Properties with addresses', noAddressData: 'No address data', infoCol: 'Info',
+  }
+};
+
+function t(key, ...args) {
+  const v = I18N[LANG][key];
+  return typeof v === 'function' ? v(...args) : v;
+}
+
+function loc() { return LANG === 'pl' ? 'pl-PL' : 'en-GB'; }
+
+function applyI18n() {
+  document.getElementById('html-root').lang = LANG;
+  document.getElementById('page-title').textContent = LANG === 'pl' ? 'Sprzątanie – dziennik pracy' : 'Cleaning – work diary';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === LANG));
+  if (currentUser) {
+    document.getElementById('hdr-sub').textContent = currentUser.email;
+    document.getElementById('sync-badge').textContent = t('online');
+  }
+  updateHours();
+}
+
+function setLang(lang) {
+  if (lang === LANG) return;
+  LANG = lang;
+  localStorage.setItem('app_lang', lang);
+  applyI18n();
+  renderTypeOptions();
+  renderItems();
+  updEarn();
+  const activeTab = TABS.find(tn => document.getElementById('tab-'+tn).classList.contains('active'));
+  if (activeTab === 'history') renderHistory();
+  if (activeTab === 'month')   renderMonth();
+  if (activeTab === 'stats')   renderStats();
+}
+
+// ══════════════════════════════════════════════
+// STAWKI & KONFIGURACJA
+// ══════════════════════════════════════════════
+const RATES  = {a1b:20,a2b:40,a3b:60,a4b:70,h1b:18,h2b:36,h3b:54,klatka:17};
+const LABELS = {
+  pl: {a1b:'Apt. 1B',a2b:'Apt. 2B',a3b:'Apt. 3B',a4b:'Apt. 4B',h1b:'Hotel 1B',h2b:'Hotel 2B',h3b:'Hotel 3B',klatka:'Klatka schodowa'},
+  en: {a1b:'Apt 1B',a2b:'Apt 2B',a3b:'Apt 3B',a4b:'Apt 4B',h1b:'Hotel 1B',h2b:'Hotel 2B',h3b:'Hotel 3B',klatka:'Stairwell'}
+};
+function lbl(type) { return LABELS[LANG][type]; }
+const TYPES  = Object.keys(RATES);
+const BEDDING_RATE = 5;
+const STORAGE_KEY  = 'sprzatanie_v3';
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let dayItems = [];      // { type, address, rate }
+let beddingCount = 0;
+let sbClient = null;
+let currentUser = null;
+
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('f-date').value = today;
+// default month picker to current month
+const ym = today.slice(0,7);
+document.getElementById('month-picker').value = ym;
+document.getElementById('filter-month').value = ym;
+
+function renderTypeOptions() {
+  const sel = document.getElementById('add-type');
+  const apts   = ['a1b','a2b','a3b','a4b'];
+  const hotels = ['h1b','h2b','h3b'];
+  const other  = ['klatka'];
+  const opt = k => `<option value="${k}">${lbl(k)} – £${RATES[k]}</option>`;
+  sel.innerHTML = `
+    <optgroup label="${t('groupApartments')}">${apts.map(opt).join('')}</optgroup>
+    <optgroup label="${t('groupHotels')}">${hotels.map(opt).join('')}</optgroup>
+    <optgroup label="${t('groupOther')}">${other.map(opt).join('')}</optgroup>`;
+}
+
+// ══════════════════════════════════════════════
+// SUPABASE INIT
+// ══════════════════════════════════════════════
+function initSupabase() {
+  const raw = localStorage.getItem('sb_config');
+  if (!raw) return;
+  const cfg = JSON.parse(raw);
+  if (!cfg.url || !cfg.anonKey) return;
+
+  // normalize URL to origin only (strips any leftover path like /rest/v1
+  // from configs saved before this fix) and re-save if it changed
+  try {
+    const origin = new URL(cfg.url).origin;
+    if (origin !== cfg.url) {
+      cfg.url = origin;
+      localStorage.setItem('sb_config', JSON.stringify(cfg));
+    }
+  } catch { return; }
+
+  // pre-fill the config fields and show the "already configured" status
+  // so the user doesn't think they need to re-enter the URL/key every time
+  const urlIn = document.getElementById('sb-url-in');
+  const keyIn = document.getElementById('sb-key-in');
+  if (urlIn) urlIn.value = cfg.url;
+  if (keyIn) keyIn.value = cfg.anonKey;
+  const status = document.getElementById('sb-config-status');
+  const form = document.getElementById('sb-config-form');
+  if (status && form) { status.classList.remove('hidden'); form.classList.add('hidden'); }
+
+  sbClient = supabase.createClient(cfg.url, cfg.anonKey);
+
+  sbClient.auth.onAuthStateChange((event, session) => {
+    currentUser = session ? session.user : null;
+    updateAccountUI();
+    if (currentUser) syncFromCloud();
+  });
+
+  sbClient.auth.getSession().then(({data}) => {
+    currentUser = data.session ? data.session.user : null;
+    updateAccountUI();
+    if (currentUser) syncFromCloud();
+  });
+}
+
+function toggleSbConfigForm() {
+  document.getElementById('sb-config-form').classList.remove('hidden');
+  document.getElementById('sb-config-status').classList.add('hidden');
+}
+
+function saveSupabaseConfig() {
+  const rawUrl = document.getElementById('sb-url-in').value.trim();
+  const anonKey = document.getElementById('sb-key-in').value.trim();
+  if (!rawUrl || !anonKey) {
+    document.getElementById('sb-err').textContent = t('toastEnterUrlKey');
+    return;
+  }
+  let url;
+  try {
+    // normalize to origin only (strip any path like /rest/v1, /auth/v1, trailing slash)
+    url = new URL(rawUrl).origin;
+  } catch {
+    document.getElementById('sb-err').textContent = t('toastInvalidUrl');
+    return;
+  }
+  try {
+    localStorage.setItem('sb_config', JSON.stringify({url, anonKey}));
+    initSupabase();
+    toast(t('toastConfigSaved'));
+    document.getElementById('sb-err').textContent = '';
+  } catch(e) {
+    document.getElementById('sb-err').textContent = t('toastConfigSaveError', e.message);
+  }
+}
+
+// ══════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════
+function doLogin() {
+  if (!sbClient) { toast(t('toastNeedSupabaseConfig')); return; }
+  const email = document.getElementById('acc-email-in').value.trim();
+  const pass  = document.getElementById('acc-pass-in').value;
+  sbClient.auth.signInWithPassword({email, password: pass})
+    .then(({error}) => {
+      if (error) document.getElementById('acc-err').textContent = translateAuthErr(error.message);
+      else toast(t('toastLoggedIn'));
+    });
+}
+
+function doRegister() {
+  if (!sbClient) { toast(t('toastNeedSupabaseConfig')); return; }
+  const email = document.getElementById('reg-email-in').value.trim();
+  const pass  = document.getElementById('reg-pass-in').value;
+  const pass2 = document.getElementById('reg-pass2-in').value;
+  if (pass !== pass2) { document.getElementById('reg-err').textContent = t('errPasswordMismatch'); return; }
+  sbClient.auth.signUp({email, password: pass})
+    .then(({error}) => {
+      if (error) document.getElementById('reg-err').textContent = translateAuthErr(error.message);
+      else toast(t('toastAccountCreated'));
+    });
+}
+
+function doLogout() {
+  sbClient.auth.signOut().then(() => toast(t('toastLoggedOut')));
+}
+
+function translateAuthErr(msg) {
+  const map = {
+    'Invalid login credentials': t('authErrInvalidCreds'),
+    'User already registered': t('authErrUserExists'),
+    'Unable to validate email address: invalid format': t('authErrInvalidEmail'),
+    'Password should be at least 6 characters': t('authErrWeakPassword'),
+  };
+  return map[msg] || t('authErrGeneric', msg);
+}
+
+function updateAccountUI() {
+  const loggedIn = !!currentUser;
+  document.getElementById('acc-logged').classList.toggle('hidden', !loggedIn);
+  document.getElementById('acc-loggedout').classList.toggle('hidden', loggedIn);
+  if (loggedIn) {
+    document.getElementById('acc-email').textContent = currentUser.email;
+    document.getElementById('hdr-sub').textContent = currentUser.email;
+    document.getElementById('sync-badge').textContent = t('online');
+    document.getElementById('sync-badge').classList.add('online');
+  } else {
+    document.getElementById('hdr-sub').textContent = t('appSubtitle');
+    document.getElementById('sync-badge').textContent = t('account');
+    document.getElementById('sync-badge').classList.remove('online');
+  }
+}
+
+function showRegForm()  { document.getElementById('acc-form-login').classList.add('hidden');    document.getElementById('acc-form-reg').classList.remove('hidden'); }
+function showLoginForm(){ document.getElementById('acc-form-reg').classList.add('hidden');     document.getElementById('acc-form-login').classList.remove('hidden'); }
+
+// ══════════════════════════════════════════════
+// CLOUD SYNC
+// ══════════════════════════════════════════════
+async function syncFromCloud() {
+  if (!currentUser || !sbClient) return;
+  try {
+    const { data: rows, error } = await sbClient.from('entries').select('data').eq('user_id', currentUser.id);
+    if (error) throw error;
+    const cloudData = rows.map(r => r.data);
+    // Merge: cloud wins for same dates
+    const local = loadData();
+    const merged = mergeEntries(local, cloudData);
+    saveData(merged);
+    toast(t('toastSyncedFromCloud'));
+  } catch(e) { console.warn('Sync failed', e); }
+}
+
+async function syncNow() {
+  if (!currentUser || !sbClient) { toast(t('toastNotLoggedIn')); return; }
+  const data = loadData();
+  const rows = data.map(entry => ({ user_id: currentUser.id, date: entry.date, data: entry }));
+  const { error } = await sbClient.from('entries').upsert(rows, { onConflict: 'user_id,date' });
+  if (error) { console.warn('Sync failed', error); toast(t('toastSyncError')); return; }
+  toast(t('toastSentToCloud'));
+}
+
+async function pushEntryToCloud(entry) {
+  if (!currentUser || !sbClient) return;
+  try {
+    await sbClient.from('entries').upsert(
+      { user_id: currentUser.id, date: entry.date, data: entry },
+      { onConflict: 'user_id,date' }
+    );
+  } catch(e) { console.warn('Push failed', e); }
+}
+
+async function deleteEntryFromCloud(date) {
+  if (!currentUser || !sbClient) return;
+  try {
+    await sbClient.from('entries').delete().eq('user_id', currentUser.id).eq('date', date);
+  } catch(e) { console.warn('Delete failed', e); }
+}
+
+function mergeEntries(local, cloud) {
+  const map = {};
+  local.forEach(e => { map[e.date] = e; });
+  cloud.forEach(e => { map[e.date] = e; }); // cloud overwrites
+  return Object.values(map).sort((a,b) => b.date.localeCompare(a.date));
+}
+
+// ══════════════════════════════════════════════
+// LOCAL STORAGE
+// ══════════════════════════════════════════════
+function loadData()  { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+function saveData(a) { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
+
+function exportBackup() {
+  const data = loadData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `sprzatanie_backup_${today}.json`;
+  a.click();
+  toast(t('toastBackupDownloaded'));
+}
+
+function importBackup(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data)) throw new Error('bad format');
+      const existing = loadData();
+      const merged = mergeEntries(existing, data);
+      saveData(merged);
+      toast(t('toastImported', data.length));
+      renderHistory();
+    } catch { toast(t('toastImportError')); }
+  };
+  reader.readAsText(file);
+}
+
+function importExcel(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      const ws1 = wb.Sheets[wb.SheetNames[0]];
+      const ws2 = wb.SheetNames[1] ? wb.Sheets[wb.SheetNames[1]] : null;
+      const rows1 = XLSX.utils.sheet_to_json(ws1, {defval:''});
+      const rows2 = ws2 ? XLSX.utils.sheet_to_json(ws2, {defval:''}) : [];
+
+      const get = (row, ...keys) => {
+        for (const k of keys) if (row[k]!==undefined && row[k]!=='') return row[k];
+        return undefined;
+      };
+      const toDateStr = v => {
+        if (v instanceof Date) return v.toISOString().slice(0,10);
+        return String(v).trim();
+      };
+      const dateKeys   = [I18N.pl.colDate, I18N.en.colDate];
+      const sumLabels  = [I18N.pl.sumLabel, I18N.en.sumLabel];
+
+      const entries = [];
+      for (const row of rows1) {
+        const dateRaw = get(row, ...dateKeys);
+        if (!dateRaw || sumLabels.includes(dateRaw)) continue;
+        const entry = {
+          date: toDateStr(dateRaw),
+          start: String(get(row, I18N.pl.colStart, I18N.en.colStart) || ''),
+          end:   String(get(row, I18N.pl.colEnd, I18N.en.colEnd) || ''),
+          hoursWorked:  parseFloat(get(row, I18N.pl.colHours, I18N.en.colHours)) || 0,
+          miles:        parseFloat(get(row, I18N.pl.colMiles, I18N.en.colMiles)) || 0,
+          totalApts:    parseInt(get(row, I18N.pl.colTotalApts, I18N.en.colTotalApts)) || 0,
+          beddingCount: parseInt(get(row, I18N.pl.colBeddingPcs, I18N.en.colBeddingPcs)) || 0,
+          beddingEarned: parseFloat(get(row, I18N.pl.colBeddingValue, I18N.en.colBeddingValue)) || 0,
+          earnedBase:   parseFloat(get(row, I18N.pl.colBaseEarnings, I18N.en.colBaseEarnings)) || 0,
+          extra:        parseFloat(get(row, I18N.pl.colExtra, I18N.en.colExtra)) || 0,
+          extraReason:  String(get(row, I18N.pl.colExtraReason, I18N.en.colExtraReason) || ''),
+          earned:       parseFloat(get(row, I18N.pl.colTotal, I18N.en.colTotal)) || 0,
+          notes:        String(get(row, I18N.pl.colNotes, I18N.en.colNotes) || ''),
+          items: []
+        };
+        TYPES.forEach(k => {
+          entry[k] = parseInt(get(row, LABELS.pl[k], LABELS.en[k])) || 0;
+        });
+        entries.push(entry);
+      }
+      if (!entries.length) throw new Error('empty');
+
+      const labelToType = {};
+      TYPES.forEach(k => { labelToType[LABELS.pl[k]] = k; labelToType[LABELS.en[k]] = k; });
+
+      for (const row of rows2) {
+        const dateRaw = get(row, ...dateKeys);
+        if (!dateRaw) continue;
+        const date = toDateStr(dateRaw);
+        const entry = entries.find(en2 => en2.date === date);
+        if (!entry) continue;
+        const typeLabel = get(row, I18N.pl.colType, I18N.en.colType);
+        entry.items.push({
+          type: labelToType[typeLabel] || typeLabel,
+          address: String(get(row, I18N.pl.colAddress, I18N.en.colAddress) || ''),
+          rate: parseFloat(get(row, I18N.pl.colRate, I18N.en.colRate)) || 0
+        });
+      }
+
+      const existing = loadData();
+      const merged = mergeEntries(existing, entries);
+      saveData(merged);
+      toast(t('toastImported', entries.length));
+      renderHistory();
+    } catch { toast(t('toastImportExcelError')); }
+  };
+  reader.readAsArrayBuffer(file);
+  ev.target.value = '';
+}
+
+// ══════════════════════════════════════════════
+// TIME
+// ══════════════════════════════════════════════
+function updateHours() {
+  const s = document.getElementById('f-start').value;
+  const e = document.getElementById('f-end').value;
+  const el = document.getElementById('hours-display');
+  if (!s||!e) { el.textContent = t('hoursPlaceholder'); return; }
+  const [sh,sm]=s.split(':').map(Number), [eh,em]=e.split(':').map(Number);
+  let mins=(eh*60+em)-(sh*60+sm); if(mins<0)mins+=1440;
+  const h = Math.floor(mins/60), m = mins%60;
+  el.textContent = LANG === 'pl' ? `⏱ Przepracowano: ${h}h ${m}min` : `⏱ Worked: ${h}h ${m}min`;
+}
+document.getElementById('f-start').addEventListener('change', updateHours);
+document.getElementById('f-end').addEventListener('change',   updateHours);
+
+// ══════════════════════════════════════════════
+// ITEMS (apartamenty z adresami)
+// ══════════════════════════════════════════════
+function addItem() {
+  const type = document.getElementById('add-type').value;
+  const addr = document.getElementById('add-addr').value.trim();
+  dayItems.push({ type, address: addr, rate: RATES[type] });
+  document.getElementById('add-addr').value = '';
+  renderItems();
+  updEarn();
+}
+
+function removeItem(i) {
+  dayItems.splice(i, 1);
+  renderItems();
+  updEarn();
+}
+
+function renderItems() {
+  const list = document.getElementById('items-list');
+  const empty = document.getElementById('items-empty');
+  if (!dayItems.length) { list.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  list.innerHTML = dayItems.map((it,i) => `
+    <div class="item-row">
+      <span class="item-type">${lbl(it.type)}</span>
+      <span class="item-addr">${it.address || `<em style="opacity:.5">${t('noAddress')}</em>`}</span>
+      <span class="item-price">£${it.rate}</span>
+      <button class="item-del" onclick="removeItem(${i})">✕</button>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════
+// EARNINGS
+// ══════════════════════════════════════════════
+function chgBed(d) {
+  beddingCount = Math.max(0, beddingCount + d);
+  document.getElementById('val-bed').textContent = beddingCount;
+  updEarn();
+}
+
+function updEarn() {
+  const extra = parseFloat(document.getElementById('f-extra').value)||0;
+  const el = document.getElementById('earn-preview');
+  const beddingTotal = beddingCount * BEDDING_RATE;
+  const itemsTotal   = dayItems.reduce((s,it)=>s+it.rate, 0);
+  const grand = itemsTotal + beddingTotal + extra;
+
+  if (!grand) { el.innerHTML=`<div class="earn-empty">${t('earnEmpty')}</div>`; return; }
+
+  // group items by type category
+  const aptItems   = dayItems.filter(it=>it.type.startsWith('a'));
+  const hotelItems = dayItems.filter(it=>it.type.startsWith('h'));
+  const otherItems = dayItems.filter(it=>it.type==='klatka');
+
+  let html = '<div class="earn-box">';
+
+  if (aptItems.length) {
+    html += `<div class="er hdr">${t('sectionApartments')}</div>`;
+    aptItems.forEach(it => { html += `<div class="er"><span class="ern">${lbl(it.type)}${it.address?` – ${it.address}`:''}</span><span class="erv">£${it.rate}</span></div>`; });
+  }
+  if (hotelItems.length) {
+    html += `<div class="er hdr">${t('sectionHotels')}</div>`;
+    hotelItems.forEach(it => { html += `<div class="er"><span class="ern">${lbl(it.type)}${it.address?` – ${it.address}`:''}</span><span class="erv">£${it.rate}</span></div>`; });
+  }
+  if (otherItems.length) {
+    html += `<div class="er hdr">${t('sectionOther')}</div>`;
+    otherItems.forEach(it => { html += `<div class="er"><span class="ern">${lbl(it.type)}${it.address?` – ${it.address}`:''}</span><span class="erv">£${it.rate}</span></div>`; });
+  }
+  if (beddingCount > 0) {
+    html += `<div class="er hdr">${t('sectionBedding')}</div>`;
+    html += `<div class="er"><span class="ern">${t('beddingItem')}<span class="erc">${beddingCount}×£${BEDDING_RATE}</span></span><span class="erv">£${beddingTotal.toFixed(2)}</span></div>`;
+  }
+  if (extra > 0) {
+    const reason = document.getElementById('f-extra-reason').value || t('extraDefaultReason');
+    html += `<div class="er"><span class="ern">${reason}</span><span class="erv" style="color:var(--wa)">+£${extra.toFixed(2)}</span></div>`;
+  }
+  html += `<div class="er total"><span>${t('total')}</span><span class="erv">£${grand.toFixed(2)}</span></div></div>`;
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════
+// SAVE ENTRY
+// ══════════════════════════════════════════════
+function saveEntry() {
+  const date  = document.getElementById('f-date').value;
+  const start = document.getElementById('f-start').value;
+  const end   = document.getElementById('f-end').value;
+  const miles = parseFloat(document.getElementById('f-miles').value)||0;
+  const extra = parseFloat(document.getElementById('f-extra').value)||0;
+
+  if (!date)  { toast(t('toastEnterDate')); return; }
+  if (!start) { toast(t('toastEnterStart')); return; }
+  if (!end)   { toast(t('toastEnterEnd')); return; }
+
+  const [sh,sm]=start.split(':').map(Number), [eh,em]=end.split(':').map(Number);
+  let mins=(eh*60+em)-(sh*60+sm); if(mins<0)mins+=1440;
+  const hoursWorked = +(mins/60).toFixed(2);
+
+  const beddingEarned = beddingCount * BEDDING_RATE;
+  const earnedBase    = dayItems.reduce((s,it)=>s+it.rate, 0);
+  const earned        = earnedBase + beddingEarned + extra;
+
+  // per-type counts (for stats/excel compat)
+  const typeCounts = Object.fromEntries(TYPES.map(k=>[k, dayItems.filter(it=>it.type===k).length]));
+  const totalApts  = dayItems.length;
+
+  const entry = {
+    date, start, end, hoursWorked, miles,
+    items: dayItems.map(it=>({...it})),
+    ...typeCounts, totalApts,
+    beddingCount, beddingEarned, earnedBase, extra,
+    extraReason: document.getElementById('f-extra-reason').value.trim(),
+    earned,
+    notes: document.getElementById('f-notes').value.trim()
+  };
+
+  const data = loadData();
+  const idx  = data.findIndex(e=>e.date===date);
+  if (idx>=0) { if (!confirm(t('confirmOverwrite'))) return; data[idx]=entry; }
+  else data.push(entry);
+  data.sort((a,b)=>b.date.localeCompare(a.date));
+  saveData(data);
+  pushEntryToCloud(entry);
+
+  toast(t('toastSaved'));
+  resetForm();
+
+  if (confirm(t('confirmExportAfterSave'))) {
+    exportExcel();
+  }
+}
+
+function resetForm() {
+  ['f-miles','f-start','f-end','f-extra','f-extra-reason','f-notes'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('f-date').value = today;
+  dayItems = []; beddingCount = 0;
+  document.getElementById('val-bed').textContent = '0';
+  document.getElementById('hours-display').textContent = t('hoursPlaceholder');
+  renderItems(); updEarn();
+}
+
+// ══════════════════════════════════════════════
+// HISTORY
+// ══════════════════════════════════════════════
+function renderHistory() {
+  const mf = document.getElementById('filter-month').value;
+  let data = loadData();
+  if (mf) data = data.filter(e=>e.date.startsWith(mf));
+  const el = document.getElementById('history-list');
+  if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>${t('noEntries')}${mf?t('inThisMonth'):''}</p></div>`; return; }
+
+  el.innerHTML = data.map(e => {
+    const dn = new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    const items = e.items||[];
+    // show up to 3 items
+    const itemTags = items.slice(0,4).map(it=>`<span class="tag">${lbl(it.type)||it.type}${it.address?' · '+it.address:''}</span>`).join('');
+    const moreTags = items.length>4 ? `<span class="tag">+${items.length-4}${t('moreSuffix')}</span>` : '';
+    const bedTag   = e.beddingCount>0 ? `<span class="tag">🛏 ${e.beddingCount}</span>` : '';
+    const extraTag = e.extra>0 ? `<span class="tag y">+£${e.extra.toFixed(2)}</span>` : '';
+    const noteTag  = e.notes ? `<span class="tag n">📝 ${e.notes}</span>` : '';
+    return `
+    <div class="hist-item">
+      <div style="display:flex;align-items:flex-start;gap:7px">
+        <div style="flex:1">
+          <div class="hi-date">${dn}</div>
+          <div class="hi-meta">
+            <span class="tag">⏱ ${e.start}–${e.end} (${e.hoursWorked}h)</span>
+            <span class="tag r">🚗 ${e.miles} ${t('milesShort')}</span>
+            <span class="tag g">💷 £${(e.earned||0).toFixed(2)}</span>
+            ${itemTags}${moreTags}${bedTag}${extraTag}${noteTag}
+          </div>
+        </div>
+        <button class="del-btn" onclick="delEntry('${e.date}',event)">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function delEntry(date, ev) {
+  ev.stopPropagation();
+  if (!confirm(t('confirmDelete'))) return;
+  saveData(loadData().filter(e=>e.date!==date));
+  deleteEntryFromCloud(date);
+  renderHistory();
+  toast(t('toastDeleted'));
+}
+
+function clearFilter() { document.getElementById('filter-month').value=''; renderHistory(); }
+
+// ══════════════════════════════════════════════
+// MONTHLY SUMMARY
+// ══════════════════════════════════════════════
+function renderMonth() {
+  const mf = document.getElementById('month-picker').value;
+  if (!mf) { document.getElementById('month-content').innerHTML=`<div class="empty"><div class="ei">📅</div><p>${t('selectMonth')}</p></div>`; return; }
+
+  const data = loadData().filter(e=>e.date.startsWith(mf));
+  const el   = document.getElementById('month-content');
+
+  if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>${t('noDataFor', mf)}</p></div>`; return; }
+
+  const days       = data.length;
+  const totalH     = data.reduce((s,e)=>s+e.hoursWorked,0);
+  const totalMiles = data.reduce((s,e)=>s+e.miles,0);
+  const totalEarn  = data.reduce((s,e)=>s+(e.earned||0),0);
+  const totalApts  = data.reduce((s,e)=>s+(e.totalApts||0),0);
+  const totalBed   = data.reduce((s,e)=>s+(e.beddingCount||0),0);
+
+  // per-type totals
+  const typeTotals = Object.fromEntries(TYPES.map(k=>[k, data.reduce((s,e)=>s+(e[k]||0),0)]));
+
+  // all items with addresses
+  const allItems = data.flatMap(e=>(e.items||[]).map(it=>({...it, date:e.date})));
+
+  const monthName = new Date(mf+'-01').toLocaleDateString(loc(),{month:'long',year:'numeric'});
+
+  let html = `
+  <div class="sum-box">
+    <div><div class="sv">${days}</div><div class="sl">${t('statDays')}</div></div>
+    <div><div class="sv">${totalH.toFixed(1)}</div><div class="sl">${t('statHours')}</div></div>
+    <div><div class="sv">£${totalEarn.toFixed(2)}</div><div class="sl">${t('statEarnings')}</div></div>
+  </div>
+  <div class="month-stat-grid">
+    <div class="mstat"><div class="mv">${totalApts}</div><div class="ml">${t('statTotalProperties')}</div></div>
+    <div class="mstat"><div class="mv">${totalMiles.toFixed(1)}</div><div class="ml">${t('statTotalMiles')}</div></div>
+    <div class="mstat"><div class="mv">£${(totalEarn/days).toFixed(2)}</div><div class="ml">${t('statAvgPerDay')}</div></div>
+    <div class="mstat"><div class="mv">${totalBed}</div><div class="ml">${t('statBedding')}</div></div>
+  </div>`;
+
+  // Per type breakdown
+  html += `<div class="card"><h2>${t('propertyTypesFor', monthName)}</h2>`;
+  TYPES.forEach(k => {
+    if (!typeTotals[k]) return;
+    html += `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--br);font-size:.85rem">
+      <span style="font-weight:600">${lbl(k)}</span>
+      <span style="color:var(--pr);font-weight:700">${typeTotals[k]} ${t('pieces')} &nbsp; £${(typeTotals[k]*RATES[k]).toFixed(2)}</span>
+    </div>`;
+  });
+  html += '</div>';
+
+  // Addresses list
+  if (allItems.some(it=>it.address)) {
+    html += `<div class="card"><h2>${t('addressesFor', monthName)}</h2><div class="addr-list">`;
+    allItems.filter(it=>it.address).forEach(it => {
+      const d = new Date(it.date+'T00:00:00').toLocaleDateString(loc(),{day:'numeric',month:'short'});
+      html += `<div class="addr-row"><span class="at">${d} · ${lbl(it.type)}</span><span class="aa">${it.address}</span></div>`;
+    });
+    html += '</div></div>';
+  }
+
+  // Day-by-day list
+  html += `<div class="card"><h2>${t('everyDayFor', monthName)}</h2>`;
+  data.forEach(e => {
+    const dn = new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'short',day:'numeric',month:'short'});
+    html += `<div style="padding:9px 0;border-bottom:1px solid var(--br)">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-weight:700;font-size:.88rem">${dn}</span>
+        <span style="font-weight:700;color:var(--ok);font-size:.88rem">£${(e.earned||0).toFixed(2)}</span>
+      </div>
+      <div style="font-size:.78rem;color:var(--mt)">⏱ ${e.start}–${e.end} (${e.hoursWorked}h) &nbsp; 🚗 ${e.miles} ${t('milesShort')} &nbsp; 🏠 ${e.totalApts||0} ${t('properties')}</div>
+      ${(e.items||[]).map(it=>`<div style="font-size:.76rem;color:var(--mt);margin-top:2px">• ${lbl(it.type)}${it.address?' – '+it.address:''} · £${it.rate}</div>`).join('')}
+    </div>`;
+  });
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════
+// STATS
+// ══════════════════════════════════════════════
+function renderStats() {
+  const data = loadData();
+  const el   = document.getElementById('stats-content');
+  if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📊</div><p>${t('noData')}</p></div>`; return; }
+
+  const days      = data.length;
+  const totalH    = data.reduce((s,e)=>s+e.hoursWorked,0).toFixed(1);
+  const totalMi   = data.reduce((s,e)=>s+e.miles,0).toFixed(1);
+  const totalApts = data.reduce((s,e)=>s+(e.totalApts||0),0);
+  const totalEarn = data.reduce((s,e)=>s+(e.earned||0),0).toFixed(2);
+  const typeTotals= Object.fromEntries(TYPES.map(k=>[k,data.reduce((s,e)=>s+(e[k]||0),0)]));
+
+  el.innerHTML = `
+  <div class="sum-box">
+    <div><div class="sv">${days}</div><div class="sl">${t('statDays')}</div></div>
+    <div><div class="sv">${totalH}</div><div class="sl">${t('statHours')}</div></div>
+    <div><div class="sv">£${totalEarn}</div><div class="sl">${t('statTotalEarnings')}</div></div>
+  </div>
+  <div class="stats-grid">
+    <div class="sc"><div class="sv">${totalApts}</div><div class="sl">${t('statApts')}</div></div>
+    <div class="sc"><div class="sv">${(totalH/days).toFixed(1)}h</div><div class="sl">${t('statAvgHoursDay')}</div></div>
+    <div class="sc"><div class="sv">${totalMi}</div><div class="sl">${t('statTotalMiles')}</div></div>
+    <div class="sc"><div class="sv">£${(totalEarn/days).toFixed(2)}</div><div class="sl">${t('statAvgPerDay')}</div></div>
+  </div>
+  <div class="card">
+    <h2>${t('statAllTime')}</h2>
+    ${TYPES.map(k=>bar(lbl(k),typeTotals[k],totalApts)).join('')}
+  </div>
+  <button class="btn btn-ok" onclick="showTab('history');exportExcel()">${t('btnExportExcel')}</button>`;
+}
+
+function bar(label,val,total) {
+  const pct=total?Math.round(val/total*100):0;
+  return `<div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:3px">
+      <span style="font-weight:600">${label}</span>
+      <span style="color:var(--mt)">${val} (${pct}%)</span>
+    </div>
+    <div style="background:var(--br);border-radius:99px;height:6px">
+      <div style="background:var(--pr);width:${pct}%;height:6px;border-radius:99px"></div>
+    </div></div>`;
+}
+
+// ══════════════════════════════════════════════
+// EXPORT EXCEL
+// ══════════════════════════════════════════════
+function exportExcel() {
+  const data = loadData();
+  if (!data.length) { toast(t('toastNoData')); return; }
+  const mf = document.getElementById('filter-month').value;
+  const filtered = mf ? data.filter(e=>e.date.startsWith(mf)) : data;
+  if (!filtered.length) { toast(t('toastNoDataMonth')); return; }
+
+  // Sheet 1: daily summary
+  const rows = filtered.map(e => {
+    const row = {
+      [t('colDate')]: e.date,
+      [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
+      [t('colStart')]: e.start, [t('colEnd')]: e.end, [t('colHours')]: e.hoursWorked, [t('colMiles')]: e.miles,
+    };
+    TYPES.forEach(k => { row[lbl(k)] = e[k]||0; });
+    row[t('colTotalApts')] = e.totalApts||0;
+    row[t('colBeddingPcs')] = e.beddingCount||0;
+    row[t('colBeddingValue')] = (e.beddingEarned||0).toFixed(2);
+    row[t('colBaseEarnings')] = (e.earnedBase||0).toFixed(2);
+    row[t('colExtra')] = (e.extra||0).toFixed(2);
+    row[t('colExtraReason')] = e.extraReason||'';
+    row[t('colTotal')] = (e.earned||0).toFixed(2);
+    row[t('colNotes')] = e.notes||'';
+    return row;
+  });
+
+  // totals row
+  const sum = {[t('colDate')]: t('sumLabel')};
+  sum[t('colHours')] = filtered.reduce((s,e)=>s+parseFloat(e.hoursWorked||0),0).toFixed(2);
+  sum[t('colMiles')] = filtered.reduce((s,e)=>s+parseFloat(e.miles||0),0).toFixed(2);
+  TYPES.forEach(k=>{ sum[lbl(k)]=filtered.reduce((s,e)=>s+(e[k]||0),0); });
+  sum[t('colTotalApts')]=filtered.reduce((s,e)=>s+(e.totalApts||0),0);
+  sum[t('colBeddingPcs')]=filtered.reduce((s,e)=>s+(e.beddingCount||0),0);
+  sum[t('colBeddingValue')]=filtered.reduce((s,e)=>s+(e.beddingEarned||0),0).toFixed(2);
+  sum[t('colBaseEarnings')]=filtered.reduce((s,e)=>s+(e.earnedBase||0),0).toFixed(2);
+  sum[t('colExtra')]=filtered.reduce((s,e)=>s+(e.extra||0),0).toFixed(2);
+  sum[t('colTotal')]=filtered.reduce((s,e)=>s+(e.earned||0),0).toFixed(2);
+  rows.push(sum);
+
+  const ws1 = XLSX.utils.json_to_sheet(rows);
+
+  // Sheet 2: all items with addresses
+  const itemRows = filtered.flatMap(e=>(e.items||[]).map(it=>({
+    [t('colDate')]: e.date,
+    [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
+    [t('colType')]: lbl(it.type)||it.type,
+    [t('colAddress')]: it.address||'',
+    [t('colRate')]: it.rate
+  })));
+  const ws2 = XLSX.utils.json_to_sheet(itemRows.length ? itemRows : [{[t('infoCol')]: t('noAddressData')}]);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, t('sheetSummary'));
+  XLSX.utils.book_append_sheet(wb, ws2, t('sheetItems'));
+
+  XLSX.writeFile(wb, mf?`sprzatanie_${mf}.xlsx`:'sprzatanie_wszystkie.xlsx');
+  toast(t('toastExcelDownloaded'));
+}
+
+// ══════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════
+const TABS = ['form','history','month','stats','account'];
+function showTab(name) {
+  TABS.forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===name);
+  });
+  document.querySelectorAll('nav button').forEach((b,i)=>b.classList.toggle('active',TABS[i]===name));
+  if (name==='history') renderHistory();
+  if (name==='stats')   renderStats();
+}
+
+// ══════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════
+function toast(msg) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2600);
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+applyI18n();
+renderTypeOptions();
+renderHistory();
+renderItems();
+updEarn();
+initSupabase();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
