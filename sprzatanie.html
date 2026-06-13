@@ -275,11 +275,15 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
 <!-- ═══════════════ HISTORIA ═══════════════ -->
 <div id="tab-history" class="tab">
   <div class="filter-row">
-    <input type="month" id="filter-month" onchange="document.getElementById('filter-day').value='';renderHistory()">
-    <input type="date" id="filter-day" onchange="document.getElementById('filter-month').value='';renderHistory()">
+    <input type="month" id="filter-month" onchange="document.getElementById('filter-from').value='';document.getElementById('filter-to').value='';renderHistory()">
     <button class="btn btn-out btn-sm" onclick="clearFilter()" data-i18n="btnAll">Wszystkie</button>
   </div>
-  <button class="btn btn-ok" style="margin-bottom:11px" onclick="exportExcel()" data-i18n="btnExportExcel">📥 Eksportuj do Excel</button>
+  <div class="filter-row">
+    <input type="date" id="filter-from" onchange="document.getElementById('filter-month').value='';renderHistory()">
+    <input type="date" id="filter-to" onchange="document.getElementById('filter-month').value='';renderHistory()">
+  </div>
+  <button class="btn btn-ok" style="margin-bottom:8px" onclick="exportExcel()" data-i18n="btnExportExcel">📥 Eksportuj widoczne</button>
+  <button class="btn btn-out" style="margin-bottom:11px" onclick="exportExcelAll()" data-i18n="btnExportAll">📥 Eksportuj wszystko</button>
   <div id="history-list"></div>
 </div>
 
@@ -375,7 +379,7 @@ const I18N = {
     cardNotes: '📝 Uwagi / Komentarz', notesPlaceholder: 'Wpisz uwagi do tego dnia…',
     btnSaveDay: '💾 Zapisz dzień',
     btnCancelEdit: 'Anuluj edycję', editingEntry: d => `✏️ Edytujesz wpis z dnia ${d}`, toastEditCancelled: 'Edycja anulowana',
-    btnAll: 'Wszystkie', btnExportExcel: '📥 Eksportuj do Excel', btnShow: 'Pokaż',
+    btnAll: 'Wszystkie', btnExportExcel: '📥 Eksportuj do Excel', btnExportAll: '📥 Eksportuj wszystko', btnShow: 'Pokaż',
     syncedCloud: '✅ Dane synchronizowane z chmurą', btnSyncNow: '🔄 Synchronizuj teraz', btnDownloadBackup: '💾 Pobierz backup JSON', btnLogout: 'Wyloguj się',
     cardSyncAccount: '☁ Synchronizacja & Konto',
     syncAccountDesc: 'Utwórz bezpłatne konto Supabase aby synchronizować dane między telefonem a komputerem. Dane są też zawsze zapisane lokalnie.',
@@ -459,7 +463,7 @@ const I18N = {
     cardNotes: '📝 Notes / Comments', notesPlaceholder: 'Enter notes for this day…',
     btnSaveDay: '💾 Save day',
     btnCancelEdit: 'Cancel edit', editingEntry: d => `✏️ Editing entry for ${d}`, toastEditCancelled: 'Edit cancelled',
-    btnAll: 'All', btnExportExcel: '📥 Export to Excel', btnShow: 'Show',
+    btnAll: 'All', btnExportExcel: '📥 Export to Excel', btnExportAll: '📥 Export all', btnShow: 'Show',
     syncedCloud: '✅ Data synced with cloud', btnSyncNow: '🔄 Sync now', btnDownloadBackup: '💾 Download JSON backup', btnLogout: 'Log out',
     cardSyncAccount: '☁ Sync & Account',
     syncAccountDesc: 'Create a free Supabase account to sync data between your phone and computer. Data is always saved locally too.',
@@ -1109,14 +1113,26 @@ function cancelEdit() {
 // ══════════════════════════════════════════════
 // HISTORY
 // ══════════════════════════════════════════════
+function getDateFilter() {
+  return {
+    mf: document.getElementById('filter-month').value,
+    from: document.getElementById('filter-from').value,
+    to: document.getElementById('filter-to').value
+  };
+}
+
+function applyDateFilter(data, {mf, from, to}) {
+  if (from || to) return data.filter(e => (!from || e.date>=from) && (!to || e.date<=to));
+  if (mf) return data.filter(e=>e.date.startsWith(mf));
+  return data;
+}
+
 function renderHistory() {
-  const mf = document.getElementById('filter-month').value;
-  const df = document.getElementById('filter-day').value;
-  let data = loadData();
-  if (df) data = data.filter(e=>e.date===df);
-  else if (mf) data = data.filter(e=>e.date.startsWith(mf));
+  const f = getDateFilter();
+  const data = applyDateFilter(loadData(), f);
+  const active = !!(f.mf || f.from || f.to);
   const el = document.getElementById('history-list');
-  if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>${t('noEntries')}${(mf||df)?t('inThisMonth'):''}</p></div>`; return; }
+  if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>${t('noEntries')}${active?t('inThisMonth'):''}</p></div>`; return; }
 
   el.innerHTML = data.map((e,idx) => {
     const dn = new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'short',day:'numeric',month:'short',year:'numeric'});
@@ -1204,7 +1220,12 @@ function delEntry(date, ev) {
   toast(t('toastDeleted'));
 }
 
-function clearFilter() { document.getElementById('filter-month').value=''; document.getElementById('filter-day').value=''; renderHistory(); }
+function clearFilter() {
+  document.getElementById('filter-month').value='';
+  document.getElementById('filter-from').value='';
+  document.getElementById('filter-to').value='';
+  renderHistory();
+}
 
 // ══════════════════════════════════════════════
 // MONTHLY SUMMARY
@@ -1342,12 +1363,32 @@ function formatDateDMY(dateStr) {
 function exportExcel() {
   const data = loadData();
   if (!data.length) { toast(t('toastNoData')); return; }
-  const mf = document.getElementById('filter-month').value;
-  const df = document.getElementById('filter-day').value;
-  const base = df ? data.filter(e=>e.date===df) : (mf ? data.filter(e=>e.date.startsWith(mf)) : data);
-  const filtered = base.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const f = getDateFilter();
+  const filtered = applyDateFilter(data, f).slice().sort((a,b)=>a.date.localeCompare(b.date));
   if (!filtered.length) { toast(t('toastNoDataMonth')); return; }
 
+  let filename;
+  if (f.from || f.to) {
+    if (f.from && f.to) filename = `sprzatanie_${f.from}_do_${f.to}.xlsx`;
+    else if (f.from) filename = `sprzatanie_od_${f.from}.xlsx`;
+    else filename = `sprzatanie_do_${f.to}.xlsx`;
+  } else if (f.mf) {
+    filename = `sprzatanie_${f.mf}.xlsx`;
+  } else {
+    filename = 'sprzatanie_wszystkie.xlsx';
+  }
+
+  buildAndDownloadWorkbook(filtered, filename);
+}
+
+function exportExcelAll() {
+  const data = loadData();
+  if (!data.length) { toast(t('toastNoData')); return; }
+  const filtered = data.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  buildAndDownloadWorkbook(filtered, 'sprzatanie_wszystkie.xlsx');
+}
+
+function buildAndDownloadWorkbook(filtered, filename) {
   // Sheet 1: daily summary - one row per property/object (own data only), then a day-total row
   const rows = filtered.flatMap(e => {
     const dateStr = formatDateDMY(e.date);
@@ -1411,7 +1452,7 @@ function exportExcel() {
   XLSX.utils.book_append_sheet(wb, ws1, t('sheetSummary'));
   XLSX.utils.book_append_sheet(wb, ws2, t('sheetItems'));
 
-  XLSX.writeFile(wb, df?`sprzatanie_${df}.xlsx`:(mf?`sprzatanie_${mf}.xlsx`:'sprzatanie_wszystkie.xlsx'));
+  XLSX.writeFile(wb, filename);
   toast(t('toastExcelDownloaded'));
 }
 
