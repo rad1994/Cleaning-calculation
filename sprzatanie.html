@@ -609,19 +609,9 @@ const DEFAULT_SB_CONFIG = {
 };
 
 function initSupabase() {
-  const raw = localStorage.getItem('sb_config');
-  const cfg = raw ? JSON.parse(raw) : DEFAULT_SB_CONFIG;
-  if (!cfg.url || !cfg.anonKey) return;
-
-  // normalize URL to origin only (strips any leftover path like /rest/v1
-  // from configs saved before this fix) and re-save if it changed
-  try {
-    const origin = new URL(cfg.url).origin;
-    if (origin !== cfg.url) {
-      cfg.url = origin;
-      localStorage.setItem('sb_config', JSON.stringify(cfg));
-    }
-  } catch { return; }
+  // ignore any stale manual config from older app versions - always use the built-in config
+  localStorage.removeItem('sb_config');
+  const cfg = DEFAULT_SB_CONFIG;
 
   sbClient = supabase.createClient(cfg.url, cfg.anonKey);
 
