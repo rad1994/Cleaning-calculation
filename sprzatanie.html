@@ -123,6 +123,10 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
 .tag.y{background:var(--wal);color:var(--wa)}
 .tag.n{background:#f0ede8;color:#6b5a40;font-style:italic;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .del-btn{background:var(--ngl);color:var(--ng);border:none;border-radius:6px;padding:4px 8px;font-size:.72rem;font-weight:700;cursor:pointer;flex-shrink:0}
+.hist-toggle{color:var(--mt);font-size:.75rem;flex-shrink:0;margin-top:3px;transition:transform .15s}
+.hist-toggle.open{transform:rotate(180deg)}
+.hist-detail{margin-top:10px;padding-top:10px;border-top:1px solid var(--br);display:flex;flex-direction:column;gap:4px}
+.hist-detail-row{display:flex;justify-content:space-between;font-size:.8rem;color:var(--mt)}
 
 /* filter */
 .filter-row{display:flex;gap:8px;margin-bottom:11px;align-items:center}
@@ -784,7 +788,10 @@ function importExcel(ev) {
         return undefined;
       };
       const toDateStr = v => {
-        if (v instanceof Date) return v.toISOString().slice(0,10);
+        if (v instanceof Date) {
+          const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,'0'), d=String(v.getDate()).padStart(2,'0');
+          return `${y}-${m}-${d}`;
+        }
         return String(v).trim();
       };
       const dateKeys   = [I18N.pl.colDate, I18N.en.colDate];
@@ -799,73 +806,112 @@ function importExcel(ev) {
       const COST_KEYS    = ['Koszty £', 'Costs £'];
       const DIRTY_KEYS   = ['Brudny apartament?', 'Dirty apartment?'];
 
-      const entries = [];
+      // "7h20min" / "8h30min" / plain numbers -> decimal hours
+      const parseHours = v => {
+        if (v===undefined) return 0;
+        const s = String(v).trim();
+        const m = s.match(/^(\d+(?:[.,]\d+)?)\s*h\s*(\d+)?\s*m?(?:in)?$/i);
+        if (m) return parseFloat(m[1].replace(',','.')) + (m[2] ? parseInt(m[2],10) : 0) / 60;
+        const f = parseFloat(s.replace(',','.'));
+        return isNaN(f) ? 0 : f;
+      };
+
+      // group rows1 by date - custom spreadsheets list one property per row,
+      // with several rows sharing the same date for a single working day
+      const groups = [];
+      const groupByDate = {};
       for (const row of rows1) {
         const dateRaw = get(row, ...dateKeys);
         if (!dateRaw || sumLabels.includes(dateRaw)) continue;
-        const earnedBase = parseFloat(get(row, I18N.pl.colBaseEarnings, I18N.en.colBaseEarnings, 'Zarobek z dnia bez doplaty', 'Earnings without surcharge')) || 0;
-        const extra      = parseFloat(get(row, I18N.pl.colExtra, I18N.en.colExtra)) || 0;
-        const totalRaw   = get(row, I18N.pl.colTotal, I18N.en.colTotal);
-        const entry = {
-          date: toDateStr(dateRaw),
-          start: String(get(row, I18N.pl.colStart, I18N.en.colStart) || ''),
-          end:   String(get(row, I18N.pl.colEnd, I18N.en.colEnd) || ''),
-          hoursWorked:  parseFloat(get(row, I18N.pl.colHours, I18N.en.colHours, 'Godziny', 'Hours')) || 0,
-          miles:        parseFloat(get(row, I18N.pl.colMiles, I18N.en.colMiles)) || 0,
-          totalApts:    parseInt(get(row, I18N.pl.colTotalApts, I18N.en.colTotalApts)) || 0,
-          beddingCount: parseInt(get(row, I18N.pl.colBeddingPcs, I18N.en.colBeddingPcs)) || 0,
-          beddingEarned: parseFloat(get(row, I18N.pl.colBeddingValue, I18N.en.colBeddingValue)) || 0,
-          earnedBase,
-          extra,
-          extraReason:  String(get(row, I18N.pl.colExtraReason, I18N.en.colExtraReason) || ''),
-          earned:       totalRaw !== undefined ? (parseFloat(totalRaw) || 0) : (earnedBase + extra),
-          notes:        String(get(row, I18N.pl.colNotes, I18N.en.colNotes) || ''),
-          items: []
-        };
-        TYPES.forEach(k => {
-          entry[k] = parseInt(get(row, LABELS.pl[k], LABELS.en[k], ...(TYPE_SYNONYMS[k]||[]))) || 0;
-        });
-        if (!entry.totalApts) entry.totalApts = TYPES.reduce((s,k)=>s+entry[k],0);
-
-        // extra info from custom spreadsheets that has no dedicated app field -> append to notes
-        const extraNotes = [];
-        const costs = parseFloat(get(row, ...COST_KEYS));
-        if (costs) extraNotes.push(`Koszty: £${costs}`);
-        const dirty = get(row, ...DIRTY_KEYS);
-        if (dirty && String(dirty).trim() && !/^(nie|no|0)$/i.test(String(dirty).trim())) extraNotes.push(`Brudny apartament: ${dirty}`);
-        if (extraNotes.length) entry.notes = [entry.notes, ...extraNotes].filter(Boolean).join(' | ');
-
-        // build items from per-type counts when there's no dedicated address sheet
-        const address = String(get(row, ...ADDRESS_KEYS) || '');
-        if (address) {
-          let first = true;
-          TYPES.forEach(k => {
-            for (let i=0; i<entry[k]; i++) {
-              entry.items.push({ type: k, address: first ? address : '', rate: RATES[k] });
-              first = false;
-            }
-          });
-        }
-
-        entries.push(entry);
+        // skip stray rows (e.g. a "Cennik"/price-list table further down the sheet)
+        // whose date cell isn't actually a date
+        if (!(dateRaw instanceof Date) && !/^\d{1,4}[-\/.]\d{1,2}[-\/.]\d{1,4}$/.test(String(dateRaw).trim())) continue;
+        const date = toDateStr(dateRaw);
+        let grp = groupByDate[date];
+        if (!grp) { grp = { date, rows: [] }; groupByDate[date] = grp; groups.push(grp); }
+        grp.rows.push(row);
       }
-      if (!entries.length) throw new Error('empty');
+      if (!groups.length) throw new Error('empty');
 
       const labelToType = {};
       TYPES.forEach(k => { labelToType[LABELS.pl[k]] = k; labelToType[LABELS.en[k]] = k; });
 
-      for (const row of rows2) {
-        const dateRaw = get(row, ...dateKeys);
-        if (!dateRaw) continue;
-        const date = toDateStr(dateRaw);
-        const entry = entries.find(en2 => en2.date === date);
-        if (!entry) continue;
-        const typeLabel = get(row, I18N.pl.colType, I18N.en.colType);
-        entry.items.push({
-          type: labelToType[typeLabel] || typeLabel,
-          address: String(get(row, I18N.pl.colAddress, I18N.en.colAddress) || ''),
-          rate: parseFloat(get(row, I18N.pl.colRate, I18N.en.colRate)) || 0
+      // detect a dedicated items/addresses sheet (app's own Excel export format)
+      const hasItemsSheet = rows2.some(r => get(r, ...dateKeys) !== undefined);
+
+      const entries = groups.map(({date, rows}) => {
+        const entry = {
+          date,
+          start: '', end: '',
+          hoursWorked: 0, miles: 0, totalApts: 0,
+          beddingCount: 0, beddingEarned: 0,
+          earnedBase: 0, extra: 0, extraReason: '',
+          earned: 0, notes: '', items: []
+        };
+        TYPES.forEach(k => entry[k] = 0);
+        const totalRaw0 = get(rows[0], I18N.pl.colTotal, I18N.en.colTotal);
+        const hasTotalCol = totalRaw0 !== undefined;
+        const noteParts = [];
+
+        rows.forEach(row => {
+          if (!entry.start) entry.start = String(get(row, I18N.pl.colStart, I18N.en.colStart) || '');
+          if (!entry.end)   entry.end   = String(get(row, I18N.pl.colEnd, I18N.en.colEnd) || '');
+          entry.hoursWorked += parseHours(get(row, I18N.pl.colHours, I18N.en.colHours, 'Godziny', 'Hours'));
+          entry.miles       += parseFloat(get(row, I18N.pl.colMiles, I18N.en.colMiles)) || 0;
+          entry.earnedBase  += parseFloat(get(row, I18N.pl.colBaseEarnings, I18N.en.colBaseEarnings, 'Zarobek z dnia bez doplaty', 'Earnings without surcharge')) || 0;
+          entry.extra       += parseFloat(get(row, I18N.pl.colExtra, I18N.en.colExtra)) || 0;
+          entry.beddingCount  += parseInt(get(row, I18N.pl.colBeddingPcs, I18N.en.colBeddingPcs)) || 0;
+          entry.beddingEarned += parseFloat(get(row, I18N.pl.colBeddingValue, I18N.en.colBeddingValue)) || 0;
+          entry.totalApts   += parseInt(get(row, I18N.pl.colTotalApts, I18N.en.colTotalApts)) || 0;
+          if (hasTotalCol) entry.earned += parseFloat(get(row, I18N.pl.colTotal, I18N.en.colTotal)) || 0;
+          const er = get(row, I18N.pl.colExtraReason, I18N.en.colExtraReason);
+          if (er) noteParts.push(String(er));
+          const note = get(row, I18N.pl.colNotes, I18N.en.colNotes, 'Uwagi');
+          if (note) noteParts.push(String(note));
+          const costs = parseFloat(get(row, ...COST_KEYS));
+          if (costs) noteParts.push(`Koszty: £${costs}`);
+          const dirty = get(row, ...DIRTY_KEYS);
+          if (dirty && String(dirty).trim() && !/^(nie|no|0)$/i.test(String(dirty).trim())) noteParts.push(`Brudny apartament: ${dirty}`);
+
+          // per-type counts -> entry totals
+          TYPES.forEach(k => {
+            entry[k] += parseInt(get(row, LABELS.pl[k], LABELS.en[k], ...(TYPE_SYNONYMS[k]||[]))) || 0;
+          });
+
+          // build items from per-row type counts + address when there's no dedicated items sheet
+          if (!hasItemsSheet) {
+            const address = String(get(row, ...ADDRESS_KEYS) || '');
+            let first = true;
+            TYPES.forEach(k => {
+              const cnt = parseInt(get(row, LABELS.pl[k], LABELS.en[k], ...(TYPE_SYNONYMS[k]||[]))) || 0;
+              for (let i=0; i<cnt; i++) {
+                entry.items.push({ type: k, address: first ? address : '', rate: RATES[k] });
+                first = false;
+              }
+            });
+          }
         });
+
+        if (!entry.totalApts) entry.totalApts = TYPES.reduce((s,k)=>s+entry[k],0);
+        if (!hasTotalCol) entry.earned = entry.earnedBase + entry.extra;
+        entry.notes = noteParts.filter(Boolean).join(' | ');
+        return entry;
+      });
+
+      if (hasItemsSheet) {
+        for (const row of rows2) {
+          const dateRaw = get(row, ...dateKeys);
+          if (!dateRaw) continue;
+          const date = toDateStr(dateRaw);
+          const entry = entries.find(en2 => en2.date === date);
+          if (!entry) continue;
+          const typeLabel = get(row, I18N.pl.colType, I18N.en.colType);
+          entry.items.push({
+            type: labelToType[typeLabel] || typeLabel,
+            address: String(get(row, I18N.pl.colAddress, I18N.en.colAddress) || ''),
+            rate: parseFloat(get(row, I18N.pl.colRate, I18N.en.colRate)) || 0
+          });
+        }
       }
 
       const existing = loadData();
@@ -1047,7 +1093,7 @@ function renderHistory() {
   const el = document.getElementById('history-list');
   if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>${t('noEntries')}${mf?t('inThisMonth'):''}</p></div>`; return; }
 
-  el.innerHTML = data.map(e => {
+  el.innerHTML = data.map((e,idx) => {
     const dn = new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const items = e.items||[];
     // show up to 3 items
@@ -1056,9 +1102,18 @@ function renderHistory() {
     const bedTag   = e.beddingCount>0 ? `<span class="tag">🛏 ${e.beddingCount}</span>` : '';
     const extraTag = e.extra>0 ? `<span class="tag y">+£${e.extra.toFixed(2)}</span>` : '';
     const noteTag  = e.notes ? `<span class="tag n">📝 ${e.notes}</span>` : '';
+
+    const detailRows = TYPES.map(k=>e[k]?`<div class="hist-detail-row"><span>${lbl(k)}</span><span>${e[k]} × £${RATES[k].toFixed(2)} = £${(e[k]*RATES[k]).toFixed(2)}</span></div>`:'').join('');
+    const itemRows = items.map(it=>`<div class="hist-detail-row"><span>${lbl(it.type)||it.type}${it.address?' · '+it.address:''}</span><span>£${(it.rate||0).toFixed(2)}</span></div>`).join('');
+    const extraRows = `
+      <div class="hist-detail-row"><span>${t('colBaseEarnings')}</span><span>£${(e.earnedBase||0).toFixed(2)}</span></div>
+      ${e.extra ? `<div class="hist-detail-row"><span>${t('colExtra')}${e.extraReason?' – '+e.extraReason:''}</span><span>£${e.extra.toFixed(2)}</span></div>` : ''}
+      ${e.beddingCount ? `<div class="hist-detail-row"><span>${t('colBeddingPcs')}</span><span>${e.beddingCount} (£${(e.beddingEarned||0).toFixed(2)})</span></div>` : ''}
+      <div class="hist-detail-row" style="font-weight:700;border-top:1px solid var(--br);padding-top:6px"><span>${t('colTotal')}</span><span>£${(e.earned||0).toFixed(2)}</span></div>`;
+
     return `
     <div class="hist-item">
-      <div style="display:flex;align-items:flex-start;gap:7px">
+      <div style="display:flex;align-items:flex-start;gap:7px;cursor:pointer" onclick="toggleHistDetail(${idx})">
         <div style="flex:1">
           <div class="hi-date">${dn}</div>
           <div class="hi-meta">
@@ -1068,10 +1123,20 @@ function renderHistory() {
             ${itemTags}${moreTags}${bedTag}${extraTag}${noteTag}
           </div>
         </div>
+        <span class="hist-toggle" id="hist-toggle-${idx}">▼</span>
         <button class="del-btn" onclick="delEntry('${e.date}',event)">🗑</button>
+      </div>
+      <div class="hist-detail hidden" id="hist-detail-${idx}">
+        ${itemRows || detailRows}
+        ${extraRows}
       </div>
     </div>`;
   }).join('');
+}
+
+function toggleHistDetail(idx) {
+  document.getElementById('hist-detail-'+idx).classList.toggle('hidden');
+  document.getElementById('hist-toggle-'+idx).classList.toggle('open');
 }
 
 function delEntry(date, ev) {
