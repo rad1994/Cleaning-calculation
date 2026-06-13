@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="Sprzątanie">
 <meta name="theme-color" content="#4f6072">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title id="page-title">Sprzątanie – dziennik pracy</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -123,10 +123,6 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
 .tag.y{background:var(--wal);color:var(--wa)}
 .tag.n{background:#f0ede8;color:#6b5a40;font-style:italic;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .del-btn{background:var(--ngl);color:var(--ng);border:none;border-radius:6px;padding:4px 8px;font-size:.72rem;font-weight:700;cursor:pointer;flex-shrink:0}
-.hist-toggle{color:var(--mt);font-size:.75rem;flex-shrink:0;margin-top:3px;transition:transform .15s}
-.hist-toggle.open{transform:rotate(180deg)}
-.hist-detail{margin-top:10px;padding-top:10px;border-top:1px solid var(--br);display:flex;flex-direction:column;gap:4px}
-.hist-detail-row{display:flex;justify-content:space-between;font-size:.8rem;color:var(--mt)}
 
 /* filter */
 .filter-row{display:flex;gap:8px;margin-bottom:11px;align-items:center}
@@ -203,11 +199,6 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
 <!-- ═══════════════ NOWY WPIS ═══════════════ -->
 <div id="tab-form" class="tab active">
 
-  <div id="edit-banner" class="card hidden" style="background:var(--pr);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px">
-    <span id="edit-banner-text"></span>
-    <button class="btn" style="width:auto;padding:6px 12px;background:#fff;color:var(--pr)" onclick="cancelEdit()" data-i18n="btnCancelEdit">Anuluj edycję</button>
-  </div>
-
   <div class="card">
     <h2 data-i18n="cardDateTime">📅 Data i czas pracy</h2>
     <div class="field"><label data-i18n="labelDate">Data</label><input type="date" id="f-date"></div>
@@ -275,8 +266,7 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
 <!-- ═══════════════ HISTORIA ═══════════════ -->
 <div id="tab-history" class="tab">
   <div class="filter-row">
-    <input type="month" id="filter-month" onchange="document.getElementById('filter-day').value='';renderHistory()">
-    <input type="date" id="filter-day" onchange="document.getElementById('filter-month').value='';renderHistory()">
+    <input type="month" id="filter-month" onchange="renderHistory()">
     <button class="btn btn-out btn-sm" onclick="clearFilter()" data-i18n="btnAll">Wszystkie</button>
   </div>
   <button class="btn btn-ok" style="margin-bottom:11px" onclick="exportExcel()" data-i18n="btnExportExcel">📥 Eksportuj do Excel</button>
@@ -335,6 +325,45 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
     </div>
 
     <div class="card">
+      <h2 data-i18n="cardSupabaseConfig">ℹ️ Konfiguracja Supabase</h2>
+      <div id="sb-config-status" class="hidden" style="background:var(--ok-bg,#eafaf0);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.85rem">
+        <span data-i18n="sbConfigured">✅ Supabase jest skonfigurowany – nie trzeba wpisywać tego ponownie.</span>
+        <button class="btn btn-out" style="margin-top:8px;display:block" onclick="toggleSbConfigForm()" data-i18n="btnChangeConfig">Zmień konfigurację</button>
+      </div>
+      <div id="sb-config-form">
+      <div class="setup-steps">
+        <p style="font-size:.82rem;color:var(--mt);margin-bottom:8px" data-i18n="setupIntro">Aby konto działało, skonfiguruj Supabase (raz, za darmo):</p>
+        <ol data-i18n-html="setupSteps">
+          <li>Wejdź na <a href="https://supabase.com" target="_blank">supabase.com</a> → <strong>Sign in</strong> → <strong>New project</strong></li>
+          <li>Wpisz nazwę projektu, hasło do bazy, wybierz region → <strong>Create new project</strong> (poczekaj ok. 1-2 min)</li>
+          <li>W menu po lewej: <strong>SQL Editor</strong> → <strong>New query</strong> → wklej poniższy kod SQL → <strong>Run</strong> (tworzy tabelę i zabezpieczenia)</li>
+          <li>W menu po lewej: <strong>Project Settings</strong> (ikona koła zębatego) → <strong>Data API</strong> → skopiuj <strong>Project URL</strong></li>
+          <li>Tam samo, zakładka <strong>API Keys</strong> → skopiuj klucz <strong>anon public</strong></li>
+          <li>Wklej oba poniżej i zapisz konfigurację</li>
+        </ol>
+      </div>
+      <div class="field"><label data-i18n="labelSqlEditor">SQL do wklejenia w SQL Editor</label><textarea readonly style="min-height:170px;font-size:.72rem;font-family:monospace" onclick="this.select()">create table public.entries (
+  user_id uuid references auth.users(id) on delete cascade not null,
+  date date not null,
+  data jsonb not null,
+  updated_at timestamptz default now(),
+  primary key (user_id, date)
+);
+
+alter table public.entries enable row level security;
+
+create policy "Users can manage own entries"
+on public.entries for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);</textarea></div>
+      <div class="field"><label data-i18n="labelProjectUrl">Project URL</label><input type="text" id="sb-url-in" placeholder="https://xxxxxxxx.supabase.co"></div>
+      <div class="field"><label data-i18n="labelAnonKey">Anon public key</label><input type="text" id="sb-key-in" placeholder="eyJhbGciOi..." style="font-family:monospace;font-size:.78rem"></div>
+      <button class="btn btn-pr" onclick="saveSupabaseConfig()" data-i18n="btnSaveConfig">💾 Zapisz konfigurację</button>
+      <p id="sb-err" style="color:var(--ng);font-size:.8rem;margin-top:8px;text-align:center"></p>
+      </div>
+    </div>
+
+    <div class="card">
       <h2 data-i18n="cardLocalBackup">💾 Lokalny backup</h2>
       <p style="font-size:.82rem;color:var(--mt);margin-bottom:11px" data-i18n="localBackupDesc">Bez konta możesz ręcznie eksportować i importować dane.</p>
       <button class="btn btn-ok" style="margin-bottom:8px" onclick="exportBackup()" data-i18n="btnDownloadBackup">📥 Pobierz backup JSON</button>
@@ -374,7 +403,6 @@ const I18N = {
     sectionApartments: '🏠 Apartamenty', sectionHotels: '🏨 Hotele', sectionOther: '🪜 Inne', sectionBedding: '🛏 Pościel z garażu',
     cardNotes: '📝 Uwagi / Komentarz', notesPlaceholder: 'Wpisz uwagi do tego dnia…',
     btnSaveDay: '💾 Zapisz dzień',
-    btnCancelEdit: 'Anuluj edycję', editingEntry: d => `✏️ Edytujesz wpis z dnia ${d}`, toastEditCancelled: 'Edycja anulowana',
     btnAll: 'Wszystkie', btnExportExcel: '📥 Eksportuj do Excel', btnShow: 'Pokaż',
     syncedCloud: '✅ Dane synchronizowane z chmurą', btnSyncNow: '🔄 Synchronizuj teraz', btnDownloadBackup: '💾 Pobierz backup JSON', btnLogout: 'Wyloguj się',
     cardSyncAccount: '☁ Synchronizacja & Konto',
@@ -435,7 +463,6 @@ const I18N = {
     colTotalApts: 'Apt. łącznie', colBeddingPcs: 'Pościel (szt.)', colBeddingValue: 'Pościel £', colBaseEarnings: 'Zarobki bazowe £',
     colExtra: 'Dopłata £', colExtraReason: 'Powód dopłaty', colTotal: 'Łącznie £', colNotes: 'Uwagi', sumLabel: 'SUMA',
     colType: 'Typ', colAddress: 'Adres', colRate: 'Stawka £', sheetSummary: 'Podsumowanie', sheetItems: 'Obiekty z adresami', noAddressData: 'Brak danych z adresami', infoCol: 'Info',
-    dayTotalLabel: 'Podsumowanie dnia',
   },
   en: {
     appTitle: '🧹 Cleaning Diary',
@@ -458,7 +485,6 @@ const I18N = {
     sectionApartments: '🏠 Apartments', sectionHotels: '🏨 Hotels', sectionOther: '🪜 Other', sectionBedding: '🛏 Bedding from garage',
     cardNotes: '📝 Notes / Comments', notesPlaceholder: 'Enter notes for this day…',
     btnSaveDay: '💾 Save day',
-    btnCancelEdit: 'Cancel edit', editingEntry: d => `✏️ Editing entry for ${d}`, toastEditCancelled: 'Edit cancelled',
     btnAll: 'All', btnExportExcel: '📥 Export to Excel', btnShow: 'Show',
     syncedCloud: '✅ Data synced with cloud', btnSyncNow: '🔄 Sync now', btnDownloadBackup: '💾 Download JSON backup', btnLogout: 'Log out',
     cardSyncAccount: '☁ Sync & Account',
@@ -519,7 +545,6 @@ const I18N = {
     colTotalApts: 'Total apts', colBeddingPcs: 'Bedding (pcs)', colBeddingValue: 'Bedding £', colBaseEarnings: 'Base earnings £',
     colExtra: 'Surcharge £', colExtraReason: 'Surcharge reason', colTotal: 'Total £', colNotes: 'Notes', sumLabel: 'TOTAL',
     colType: 'Type', colAddress: 'Address', colRate: 'Rate £', sheetSummary: 'Summary', sheetItems: 'Properties with addresses', noAddressData: 'No address data', infoCol: 'Info',
-    dayTotalLabel: 'Day total',
   }
 };
 
@@ -576,7 +601,6 @@ const STORAGE_KEY  = 'sprzatanie_v3';
 // ══════════════════════════════════════════════
 let dayItems = [];      // { type, address, rate }
 let beddingCount = 0;
-let editingDate = null; // date string while editing an existing entry, else null
 let sbClient = null;
 let currentUser = null;
 
@@ -602,15 +626,10 @@ function renderTypeOptions() {
 // ══════════════════════════════════════════════
 // SUPABASE INIT
 // ══════════════════════════════════════════════
-// Wbudowana konfiguracja Supabase — użytkownicy nie muszą jej wpisywać.
-const DEFAULT_SB_CONFIG = {
-  url: 'https://tlhanztpgeeondvscjed.supabase.co',
-  anonKey: 'sb_publishable_OcMr4VoHqVdi6Z0ZLYlfLA_8RT6RR93'
-};
-
 function initSupabase() {
   const raw = localStorage.getItem('sb_config');
-  const cfg = raw ? JSON.parse(raw) : DEFAULT_SB_CONFIG;
+  if (!raw) return;
+  const cfg = JSON.parse(raw);
   if (!cfg.url || !cfg.anonKey) return;
 
   // normalize URL to origin only (strips any leftover path like /rest/v1
@@ -622,6 +641,16 @@ function initSupabase() {
       localStorage.setItem('sb_config', JSON.stringify(cfg));
     }
   } catch { return; }
+
+  // pre-fill the config fields and show the "already configured" status
+  // so the user doesn't think they need to re-enter the URL/key every time
+  const urlIn = document.getElementById('sb-url-in');
+  const keyIn = document.getElementById('sb-key-in');
+  if (urlIn) urlIn.value = cfg.url;
+  if (keyIn) keyIn.value = cfg.anonKey;
+  const status = document.getElementById('sb-config-status');
+  const form = document.getElementById('sb-config-form');
+  if (status && form) { status.classList.remove('hidden'); form.classList.add('hidden'); }
 
   sbClient = supabase.createClient(cfg.url, cfg.anonKey);
 
@@ -636,6 +665,36 @@ function initSupabase() {
     updateAccountUI();
     if (currentUser) syncFromCloud();
   });
+}
+
+function toggleSbConfigForm() {
+  document.getElementById('sb-config-form').classList.remove('hidden');
+  document.getElementById('sb-config-status').classList.add('hidden');
+}
+
+function saveSupabaseConfig() {
+  const rawUrl = document.getElementById('sb-url-in').value.trim();
+  const anonKey = document.getElementById('sb-key-in').value.trim();
+  if (!rawUrl || !anonKey) {
+    document.getElementById('sb-err').textContent = t('toastEnterUrlKey');
+    return;
+  }
+  let url;
+  try {
+    // normalize to origin only (strip any path like /rest/v1, /auth/v1, trailing slash)
+    url = new URL(rawUrl).origin;
+  } catch {
+    document.getElementById('sb-err').textContent = t('toastInvalidUrl');
+    return;
+  }
+  try {
+    localStorage.setItem('sb_config', JSON.stringify({url, anonKey}));
+    initSupabase();
+    toast(t('toastConfigSaved'));
+    document.getElementById('sb-err').textContent = '';
+  } catch(e) {
+    document.getElementById('sb-err').textContent = t('toastConfigSaveError', e.message);
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -799,134 +858,54 @@ function importExcel(ev) {
         return undefined;
       };
       const toDateStr = v => {
-        if (v instanceof Date) {
-          const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,'0'), d=String(v.getDate()).padStart(2,'0');
-          return `${y}-${m}-${d}`;
-        }
-        const s = String(v).trim();
-        // DD/MM/YYYY or DD.MM.YYYY (e.g. from this app's own Excel export)
-        const dmy = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})$/);
-        if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
-        return s;
+        if (v instanceof Date) return v.toISOString().slice(0,10);
+        return String(v).trim();
       };
       const dateKeys   = [I18N.pl.colDate, I18N.en.colDate];
       const sumLabels  = [I18N.pl.sumLabel, I18N.en.sumLabel];
 
-      // extra column-name variants seen in custom (non-app-export) spreadsheets
-      const TYPE_SYNONYMS = {
-        a1b: ['Apart. 1B'], a2b: ['Apart. 2B'], a3b: ['Apart. 3B'], a4b: ['Apart. 4B'],
-        klatka: ['Schody']
-      };
-      const ADDRESS_KEYS = ['Nazwa ulicy', 'Street name'];
-      const COST_KEYS    = ['Koszty £', 'Costs £'];
-      const DIRTY_KEYS   = ['Brudny apartament?', 'Dirty apartment?'];
-
-      // "7h20min" / "8h30min" / plain numbers -> decimal hours
-      const parseHours = v => {
-        if (v===undefined) return 0;
-        const s = String(v).trim();
-        const m = s.match(/^(\d+(?:[.,]\d+)?)\s*h\s*(\d+)?\s*m?(?:in)?$/i);
-        if (m) return parseFloat(m[1].replace(',','.')) + (m[2] ? parseInt(m[2],10) : 0) / 60;
-        const f = parseFloat(s.replace(',','.'));
-        return isNaN(f) ? 0 : f;
-      };
-
-      // group rows1 by date - custom spreadsheets list one property per row,
-      // with several rows sharing the same date for a single working day
-      const groups = [];
-      const groupByDate = {};
+      const entries = [];
       for (const row of rows1) {
         const dateRaw = get(row, ...dateKeys);
         if (!dateRaw || sumLabels.includes(dateRaw)) continue;
-        // skip stray rows (e.g. a "Cennik"/price-list table further down the sheet)
-        // whose date cell isn't actually a date
-        if (!(dateRaw instanceof Date) && !/^\d{1,4}[-\/.]\d{1,2}[-\/.]\d{1,4}$/.test(String(dateRaw).trim())) continue;
-        const date = toDateStr(dateRaw);
-        let grp = groupByDate[date];
-        if (!grp) { grp = { date, rows: [] }; groupByDate[date] = grp; groups.push(grp); }
-        grp.rows.push(row);
+        const entry = {
+          date: toDateStr(dateRaw),
+          start: String(get(row, I18N.pl.colStart, I18N.en.colStart) || ''),
+          end:   String(get(row, I18N.pl.colEnd, I18N.en.colEnd) || ''),
+          hoursWorked:  parseFloat(get(row, I18N.pl.colHours, I18N.en.colHours)) || 0,
+          miles:        parseFloat(get(row, I18N.pl.colMiles, I18N.en.colMiles)) || 0,
+          totalApts:    parseInt(get(row, I18N.pl.colTotalApts, I18N.en.colTotalApts)) || 0,
+          beddingCount: parseInt(get(row, I18N.pl.colBeddingPcs, I18N.en.colBeddingPcs)) || 0,
+          beddingEarned: parseFloat(get(row, I18N.pl.colBeddingValue, I18N.en.colBeddingValue)) || 0,
+          earnedBase:   parseFloat(get(row, I18N.pl.colBaseEarnings, I18N.en.colBaseEarnings)) || 0,
+          extra:        parseFloat(get(row, I18N.pl.colExtra, I18N.en.colExtra)) || 0,
+          extraReason:  String(get(row, I18N.pl.colExtraReason, I18N.en.colExtraReason) || ''),
+          earned:       parseFloat(get(row, I18N.pl.colTotal, I18N.en.colTotal)) || 0,
+          notes:        String(get(row, I18N.pl.colNotes, I18N.en.colNotes) || ''),
+          items: []
+        };
+        TYPES.forEach(k => {
+          entry[k] = parseInt(get(row, LABELS.pl[k], LABELS.en[k])) || 0;
+        });
+        entries.push(entry);
       }
-      if (!groups.length) throw new Error('empty');
+      if (!entries.length) throw new Error('empty');
 
       const labelToType = {};
       TYPES.forEach(k => { labelToType[LABELS.pl[k]] = k; labelToType[LABELS.en[k]] = k; });
 
-      // detect a dedicated items/addresses sheet (app's own Excel export format)
-      const hasItemsSheet = rows2.some(r => get(r, ...dateKeys) !== undefined);
-
-      const entries = groups.map(({date, rows}) => {
-        const entry = {
-          date,
-          start: '', end: '',
-          hoursWorked: 0, miles: 0, totalApts: 0,
-          beddingCount: 0, beddingEarned: 0,
-          earnedBase: 0, extra: 0, extraReason: '',
-          earned: 0, notes: '', items: []
-        };
-        TYPES.forEach(k => entry[k] = 0);
-        const totalRaw0 = get(rows[0], I18N.pl.colTotal, I18N.en.colTotal);
-        const hasTotalCol = totalRaw0 !== undefined;
-        const noteParts = [];
-
-        rows.forEach(row => {
-          if (!entry.start) entry.start = String(get(row, I18N.pl.colStart, I18N.en.colStart) || '');
-          if (!entry.end)   entry.end   = String(get(row, I18N.pl.colEnd, I18N.en.colEnd) || '');
-          entry.hoursWorked += parseHours(get(row, I18N.pl.colHours, I18N.en.colHours, 'Godziny', 'Hours'));
-          entry.miles       += parseFloat(get(row, I18N.pl.colMiles, I18N.en.colMiles)) || 0;
-          entry.earnedBase  += parseFloat(get(row, I18N.pl.colBaseEarnings, I18N.en.colBaseEarnings, 'Zarobek z dnia bez doplaty', 'Earnings without surcharge')) || 0;
-          entry.extra       += parseFloat(get(row, I18N.pl.colExtra, I18N.en.colExtra)) || 0;
-          entry.beddingCount  += parseInt(get(row, I18N.pl.colBeddingPcs, I18N.en.colBeddingPcs)) || 0;
-          entry.beddingEarned += parseFloat(get(row, I18N.pl.colBeddingValue, I18N.en.colBeddingValue)) || 0;
-          entry.totalApts   += parseInt(get(row, I18N.pl.colTotalApts, I18N.en.colTotalApts)) || 0;
-          if (hasTotalCol) entry.earned += parseFloat(get(row, I18N.pl.colTotal, I18N.en.colTotal)) || 0;
-          const er = get(row, I18N.pl.colExtraReason, I18N.en.colExtraReason);
-          if (er) noteParts.push(String(er));
-          const note = get(row, I18N.pl.colNotes, I18N.en.colNotes, 'Uwagi');
-          if (note) noteParts.push(String(note));
-          const costs = parseFloat(get(row, ...COST_KEYS));
-          if (costs) noteParts.push(`Koszty: £${costs}`);
-          const dirty = get(row, ...DIRTY_KEYS);
-          if (dirty && String(dirty).trim() && !/^(nie|no|0)$/i.test(String(dirty).trim())) noteParts.push(`Brudny apartament: ${dirty}`);
-
-          // per-type counts -> entry totals
-          TYPES.forEach(k => {
-            entry[k] += parseInt(get(row, LABELS.pl[k], LABELS.en[k], ...(TYPE_SYNONYMS[k]||[]))) || 0;
-          });
-
-          // build items from per-row type counts + address when there's no dedicated items sheet
-          if (!hasItemsSheet) {
-            const address = String(get(row, ...ADDRESS_KEYS) || '');
-            let first = true;
-            TYPES.forEach(k => {
-              const cnt = parseInt(get(row, LABELS.pl[k], LABELS.en[k], ...(TYPE_SYNONYMS[k]||[]))) || 0;
-              for (let i=0; i<cnt; i++) {
-                entry.items.push({ type: k, address: first ? address : '', rate: RATES[k] });
-                first = false;
-              }
-            });
-          }
+      for (const row of rows2) {
+        const dateRaw = get(row, ...dateKeys);
+        if (!dateRaw) continue;
+        const date = toDateStr(dateRaw);
+        const entry = entries.find(en2 => en2.date === date);
+        if (!entry) continue;
+        const typeLabel = get(row, I18N.pl.colType, I18N.en.colType);
+        entry.items.push({
+          type: labelToType[typeLabel] || typeLabel,
+          address: String(get(row, I18N.pl.colAddress, I18N.en.colAddress) || ''),
+          rate: parseFloat(get(row, I18N.pl.colRate, I18N.en.colRate)) || 0
         });
-
-        if (!entry.totalApts) entry.totalApts = TYPES.reduce((s,k)=>s+entry[k],0);
-        if (!hasTotalCol) entry.earned = entry.earnedBase + entry.extra;
-        entry.notes = noteParts.filter(Boolean).join(' | ');
-        return entry;
-      });
-
-      if (hasItemsSheet) {
-        for (const row of rows2) {
-          const dateRaw = get(row, ...dateKeys);
-          if (!dateRaw) continue;
-          const date = toDateStr(dateRaw);
-          const entry = entries.find(en2 => en2.date === date);
-          if (!entry) continue;
-          const typeLabel = get(row, I18N.pl.colType, I18N.en.colType);
-          entry.items.push({
-            type: labelToType[typeLabel] || typeLabel,
-            address: String(get(row, I18N.pl.colAddress, I18N.en.colAddress) || ''),
-            rate: parseFloat(get(row, I18N.pl.colRate, I18N.en.colRate)) || 0
-          });
-        }
       }
 
       const existing = loadData();
@@ -1074,28 +1053,17 @@ function saveEntry() {
   };
 
   const data = loadData();
-
-  if (editingDate && editingDate !== date) {
-    const oldIdx = data.findIndex(e=>e.date===editingDate);
-    if (oldIdx>=0) { data.splice(oldIdx,1); deleteEntryFromCloud(editingDate); }
-  }
-
-  const idx = data.findIndex(e=>e.date===date);
-  if (idx>=0) {
-    if (!editingDate && !confirm(t('confirmOverwrite'))) return;
-    data[idx]=entry;
-  } else {
-    data.push(entry);
-  }
+  const idx  = data.findIndex(e=>e.date===date);
+  if (idx>=0) { if (!confirm(t('confirmOverwrite'))) return; data[idx]=entry; }
+  else data.push(entry);
   data.sort((a,b)=>b.date.localeCompare(a.date));
   saveData(data);
   pushEntryToCloud(entry);
 
-  const wasEditing = !!editingDate;
   toast(t('toastSaved'));
   resetForm();
 
-  if (!wasEditing && confirm(t('confirmExportAfterSave'))) {
+  if (confirm(t('confirmExportAfterSave'))) {
     exportExcel();
   }
 }
@@ -1106,14 +1074,7 @@ function resetForm() {
   dayItems = []; beddingCount = 0;
   document.getElementById('val-bed').textContent = '0';
   document.getElementById('hours-display').textContent = t('hoursPlaceholder');
-  editingDate = null;
-  document.getElementById('edit-banner').classList.add('hidden');
   renderItems(); updEarn();
-}
-
-function cancelEdit() {
-  resetForm();
-  toast(t('toastEditCancelled'));
 }
 
 // ══════════════════════════════════════════════
@@ -1121,14 +1082,12 @@ function cancelEdit() {
 // ══════════════════════════════════════════════
 function renderHistory() {
   const mf = document.getElementById('filter-month').value;
-  const df = document.getElementById('filter-day').value;
   let data = loadData();
-  if (df) data = data.filter(e=>e.date===df);
-  else if (mf) data = data.filter(e=>e.date.startsWith(mf));
+  if (mf) data = data.filter(e=>e.date.startsWith(mf));
   const el = document.getElementById('history-list');
-  if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>${t('noEntries')}${(mf||df)?t('inThisMonth'):''}</p></div>`; return; }
+  if (!data.length) { el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>${t('noEntries')}${mf?t('inThisMonth'):''}</p></div>`; return; }
 
-  el.innerHTML = data.map((e,idx) => {
+  el.innerHTML = data.map(e => {
     const dn = new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const items = e.items||[];
     // show up to 3 items
@@ -1137,18 +1096,9 @@ function renderHistory() {
     const bedTag   = e.beddingCount>0 ? `<span class="tag">🛏 ${e.beddingCount}</span>` : '';
     const extraTag = e.extra>0 ? `<span class="tag y">+£${e.extra.toFixed(2)}</span>` : '';
     const noteTag  = e.notes ? `<span class="tag n">📝 ${e.notes}</span>` : '';
-
-    const detailRows = TYPES.map(k=>e[k]?`<div class="hist-detail-row"><span>${lbl(k)}</span><span>${e[k]} × £${RATES[k].toFixed(2)} = £${(e[k]*RATES[k]).toFixed(2)}</span></div>`:'').join('');
-    const itemRows = items.map(it=>`<div class="hist-detail-row"><span>${lbl(it.type)||it.type}${it.address?' · '+it.address:''}</span><span>£${(it.rate||0).toFixed(2)}</span></div>`).join('');
-    const extraRows = `
-      <div class="hist-detail-row"><span>${t('colBaseEarnings')}</span><span>£${(e.earnedBase||0).toFixed(2)}</span></div>
-      ${e.extra ? `<div class="hist-detail-row"><span>${t('colExtra')}${e.extraReason?' – '+e.extraReason:''}</span><span>£${e.extra.toFixed(2)}</span></div>` : ''}
-      ${e.beddingCount ? `<div class="hist-detail-row"><span>${t('colBeddingPcs')}</span><span>${e.beddingCount} (£${(e.beddingEarned||0).toFixed(2)})</span></div>` : ''}
-      <div class="hist-detail-row" style="font-weight:700;border-top:1px solid var(--br);padding-top:6px"><span>${t('colTotal')}</span><span>£${(e.earned||0).toFixed(2)}</span></div>`;
-
     return `
     <div class="hist-item">
-      <div style="display:flex;align-items:flex-start;gap:7px;cursor:pointer" onclick="toggleHistDetail(${idx})">
+      <div style="display:flex;align-items:flex-start;gap:7px">
         <div style="flex:1">
           <div class="hi-date">${dn}</div>
           <div class="hi-meta">
@@ -1158,51 +1108,10 @@ function renderHistory() {
             ${itemTags}${moreTags}${bedTag}${extraTag}${noteTag}
           </div>
         </div>
-        <span class="hist-toggle" id="hist-toggle-${idx}">▼</span>
-        <button class="del-btn" onclick="editEntry('${e.date}',event)">✏️</button>
         <button class="del-btn" onclick="delEntry('${e.date}',event)">🗑</button>
-      </div>
-      <div class="hist-detail hidden" id="hist-detail-${idx}">
-        ${itemRows || detailRows}
-        ${extraRows}
       </div>
     </div>`;
   }).join('');
-}
-
-function toggleHistDetail(idx) {
-  document.getElementById('hist-detail-'+idx).classList.toggle('hidden');
-  document.getElementById('hist-toggle-'+idx).classList.toggle('open');
-}
-
-function editEntry(date, ev) {
-  ev.stopPropagation();
-  const entry = loadData().find(e=>e.date===date);
-  if (!entry) return;
-
-  editingDate = date;
-
-  document.getElementById('f-date').value  = entry.date;
-  document.getElementById('f-start').value = entry.start || '';
-  document.getElementById('f-end').value   = entry.end || '';
-  document.getElementById('f-miles').value = entry.miles || '';
-  document.getElementById('f-extra').value = entry.extra || '';
-  document.getElementById('f-extra-reason').value = entry.extraReason || '';
-  document.getElementById('f-notes').value = entry.notes || '';
-
-  dayItems = (entry.items||[]).map(it=>({...it}));
-  beddingCount = entry.beddingCount || 0;
-  document.getElementById('val-bed').textContent = beddingCount;
-
-  updateHours();
-  renderItems();
-  updEarn();
-
-  const banner = document.getElementById('edit-banner');
-  banner.classList.remove('hidden');
-  document.getElementById('edit-banner-text').textContent = t('editingEntry', entry.date);
-
-  showTab('form');
 }
 
 function delEntry(date, ev) {
@@ -1214,7 +1123,7 @@ function delEntry(date, ev) {
   toast(t('toastDeleted'));
 }
 
-function clearFilter() { document.getElementById('filter-month').value=''; document.getElementById('filter-day').value=''; renderHistory(); }
+function clearFilter() { document.getElementById('filter-month').value=''; renderHistory(); }
 
 // ══════════════════════════════════════════════
 // MONTHLY SUMMARY
@@ -1344,52 +1253,30 @@ function bar(label,val,total) {
 // ══════════════════════════════════════════════
 // EXPORT EXCEL
 // ══════════════════════════════════════════════
-function formatDateDMY(dateStr) {
-  const [y,m,d] = dateStr.split('-');
-  return `${d}/${m}/${y}`;
-}
-
 function exportExcel() {
   const data = loadData();
   if (!data.length) { toast(t('toastNoData')); return; }
   const mf = document.getElementById('filter-month').value;
-  const df = document.getElementById('filter-day').value;
-  const base = df ? data.filter(e=>e.date===df) : (mf ? data.filter(e=>e.date.startsWith(mf)) : data);
-  const filtered = base.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const filtered = mf ? data.filter(e=>e.date.startsWith(mf)) : data;
   if (!filtered.length) { toast(t('toastNoDataMonth')); return; }
 
-  // Sheet 1: daily summary - one row per property/object (own data only), then a day-total row
-  const rows = filtered.flatMap(e => {
-    const dateStr = formatDateDMY(e.date);
-    const dayStr = new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'});
-
-    const objectRows = (e.items||[]).map(it => {
-      const row = {
-        [t('colDate')]: dateStr,
-        [t('colDay')]: dayStr,
-        [t('colAddress')]: it.address||'',
-      };
-      TYPES.forEach(k => { row[lbl(k)] = (k===it.type) ? 1 : ''; });
-      return row;
-    });
-
-    const dayTotal = {
-      [t('colDate')]: dateStr,
-      [t('colDay')]: t('dayTotalLabel'),
-      [t('colAddress')]: '',
+  // Sheet 1: daily summary
+  const rows = filtered.map(e => {
+    const row = {
+      [t('colDate')]: e.date,
+      [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
       [t('colStart')]: e.start, [t('colEnd')]: e.end, [t('colHours')]: e.hoursWorked, [t('colMiles')]: e.miles,
     };
-    TYPES.forEach(k => { dayTotal[lbl(k)] = e[k]||0; });
-    dayTotal[t('colTotalApts')] = e.totalApts||0;
-    dayTotal[t('colBeddingPcs')] = e.beddingCount||0;
-    dayTotal[t('colBeddingValue')] = (e.beddingEarned||0).toFixed(2);
-    dayTotal[t('colBaseEarnings')] = (e.earnedBase||0).toFixed(2);
-    dayTotal[t('colExtra')] = (e.extra||0).toFixed(2);
-    dayTotal[t('colExtraReason')] = e.extraReason||'';
-    dayTotal[t('colTotal')] = (e.earned||0).toFixed(2);
-    dayTotal[t('colNotes')] = e.notes||'';
-
-    return [...objectRows, dayTotal];
+    TYPES.forEach(k => { row[lbl(k)] = e[k]||0; });
+    row[t('colTotalApts')] = e.totalApts||0;
+    row[t('colBeddingPcs')] = e.beddingCount||0;
+    row[t('colBeddingValue')] = (e.beddingEarned||0).toFixed(2);
+    row[t('colBaseEarnings')] = (e.earnedBase||0).toFixed(2);
+    row[t('colExtra')] = (e.extra||0).toFixed(2);
+    row[t('colExtraReason')] = e.extraReason||'';
+    row[t('colTotal')] = (e.earned||0).toFixed(2);
+    row[t('colNotes')] = e.notes||'';
+    return row;
   });
 
   // totals row
@@ -1409,7 +1296,7 @@ function exportExcel() {
 
   // Sheet 2: all items with addresses
   const itemRows = filtered.flatMap(e=>(e.items||[]).map(it=>({
-    [t('colDate')]: formatDateDMY(e.date),
+    [t('colDate')]: e.date,
     [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
     [t('colType')]: lbl(it.type)||it.type,
     [t('colAddress')]: it.address||'',
@@ -1421,7 +1308,7 @@ function exportExcel() {
   XLSX.utils.book_append_sheet(wb, ws1, t('sheetSummary'));
   XLSX.utils.book_append_sheet(wb, ws2, t('sheetItems'));
 
-  XLSX.writeFile(wb, df?`sprzatanie_${df}.xlsx`:(mf?`sprzatanie_${mf}.xlsx`:'sprzatanie_wszystkie.xlsx'));
+  XLSX.writeFile(wb, mf?`sprzatanie_${mf}.xlsx`:'sprzatanie_wszystkie.xlsx');
   toast(t('toastExcelDownloaded'));
 }
 
