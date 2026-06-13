@@ -203,6 +203,11 @@ nav button.active{color:var(--pr);border-bottom-color:var(--pr)}
 <!-- ═══════════════ NOWY WPIS ═══════════════ -->
 <div id="tab-form" class="tab active">
 
+  <div id="edit-banner" class="card hidden" style="background:var(--pr);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <span id="edit-banner-text"></span>
+    <button class="btn" style="width:auto;padding:6px 12px;background:#fff;color:var(--pr)" onclick="cancelEdit()" data-i18n="btnCancelEdit">Anuluj edycję</button>
+  </div>
+
   <div class="card">
     <h2 data-i18n="cardDateTime">📅 Data i czas pracy</h2>
     <div class="field"><label data-i18n="labelDate">Data</label><input type="date" id="f-date"></div>
@@ -368,6 +373,7 @@ const I18N = {
     sectionApartments: '🏠 Apartamenty', sectionHotels: '🏨 Hotele', sectionOther: '🪜 Inne', sectionBedding: '🛏 Pościel z garażu',
     cardNotes: '📝 Uwagi / Komentarz', notesPlaceholder: 'Wpisz uwagi do tego dnia…',
     btnSaveDay: '💾 Zapisz dzień',
+    btnCancelEdit: 'Anuluj edycję', editingEntry: d => `✏️ Edytujesz wpis z dnia ${d}`, toastEditCancelled: 'Edycja anulowana',
     btnAll: 'Wszystkie', btnExportExcel: '📥 Eksportuj do Excel', btnShow: 'Pokaż',
     syncedCloud: '✅ Dane synchronizowane z chmurą', btnSyncNow: '🔄 Synchronizuj teraz', btnDownloadBackup: '💾 Pobierz backup JSON', btnLogout: 'Wyloguj się',
     cardSyncAccount: '☁ Synchronizacja & Konto',
@@ -428,6 +434,7 @@ const I18N = {
     colTotalApts: 'Apt. łącznie', colBeddingPcs: 'Pościel (szt.)', colBeddingValue: 'Pościel £', colBaseEarnings: 'Zarobki bazowe £',
     colExtra: 'Dopłata £', colExtraReason: 'Powód dopłaty', colTotal: 'Łącznie £', colNotes: 'Uwagi', sumLabel: 'SUMA',
     colType: 'Typ', colAddress: 'Adres', colRate: 'Stawka £', sheetSummary: 'Podsumowanie', sheetItems: 'Obiekty z adresami', noAddressData: 'Brak danych z adresami', infoCol: 'Info',
+    colObjectN: n => `Obiekt ${n}`, colObjectNr: 'Nr obiektu',
   },
   en: {
     appTitle: '🧹 Cleaning Diary',
@@ -450,6 +457,7 @@ const I18N = {
     sectionApartments: '🏠 Apartments', sectionHotels: '🏨 Hotels', sectionOther: '🪜 Other', sectionBedding: '🛏 Bedding from garage',
     cardNotes: '📝 Notes / Comments', notesPlaceholder: 'Enter notes for this day…',
     btnSaveDay: '💾 Save day',
+    btnCancelEdit: 'Cancel edit', editingEntry: d => `✏️ Editing entry for ${d}`, toastEditCancelled: 'Edit cancelled',
     btnAll: 'All', btnExportExcel: '📥 Export to Excel', btnShow: 'Show',
     syncedCloud: '✅ Data synced with cloud', btnSyncNow: '🔄 Sync now', btnDownloadBackup: '💾 Download JSON backup', btnLogout: 'Log out',
     cardSyncAccount: '☁ Sync & Account',
@@ -510,6 +518,7 @@ const I18N = {
     colTotalApts: 'Total apts', colBeddingPcs: 'Bedding (pcs)', colBeddingValue: 'Bedding £', colBaseEarnings: 'Base earnings £',
     colExtra: 'Surcharge £', colExtraReason: 'Surcharge reason', colTotal: 'Total £', colNotes: 'Notes', sumLabel: 'TOTAL',
     colType: 'Type', colAddress: 'Address', colRate: 'Rate £', sheetSummary: 'Summary', sheetItems: 'Properties with addresses', noAddressData: 'No address data', infoCol: 'Info',
+    colObjectN: n => `Property ${n}`, colObjectNr: 'Object No.',
   }
 };
 
@@ -566,6 +575,7 @@ const STORAGE_KEY  = 'sprzatanie_v3';
 // ══════════════════════════════════════════════
 let dayItems = [];      // { type, address, rate }
 let beddingCount = 0;
+let editingDate = null; // date string while editing an existing entry, else null
 let sbClient = null;
 let currentUser = null;
 
@@ -792,7 +802,11 @@ function importExcel(ev) {
           const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,'0'), d=String(v.getDate()).padStart(2,'0');
           return `${y}-${m}-${d}`;
         }
-        return String(v).trim();
+        const s = String(v).trim();
+        // DD/MM/YYYY or DD.MM.YYYY (e.g. from this app's own Excel export)
+        const dmy = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})$/);
+        if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+        return s;
       };
       const dateKeys   = [I18N.pl.colDate, I18N.en.colDate];
       const sumLabels  = [I18N.pl.sumLabel, I18N.en.sumLabel];
@@ -1059,17 +1073,28 @@ function saveEntry() {
   };
 
   const data = loadData();
-  const idx  = data.findIndex(e=>e.date===date);
-  if (idx>=0) { if (!confirm(t('confirmOverwrite'))) return; data[idx]=entry; }
-  else data.push(entry);
+
+  if (editingDate && editingDate !== date) {
+    const oldIdx = data.findIndex(e=>e.date===editingDate);
+    if (oldIdx>=0) { data.splice(oldIdx,1); deleteEntryFromCloud(editingDate); }
+  }
+
+  const idx = data.findIndex(e=>e.date===date);
+  if (idx>=0) {
+    if (!editingDate && !confirm(t('confirmOverwrite'))) return;
+    data[idx]=entry;
+  } else {
+    data.push(entry);
+  }
   data.sort((a,b)=>b.date.localeCompare(a.date));
   saveData(data);
   pushEntryToCloud(entry);
 
+  const wasEditing = !!editingDate;
   toast(t('toastSaved'));
   resetForm();
 
-  if (confirm(t('confirmExportAfterSave'))) {
+  if (!wasEditing && confirm(t('confirmExportAfterSave'))) {
     exportExcel();
   }
 }
@@ -1080,7 +1105,14 @@ function resetForm() {
   dayItems = []; beddingCount = 0;
   document.getElementById('val-bed').textContent = '0';
   document.getElementById('hours-display').textContent = t('hoursPlaceholder');
+  editingDate = null;
+  document.getElementById('edit-banner').classList.add('hidden');
   renderItems(); updEarn();
+}
+
+function cancelEdit() {
+  resetForm();
+  toast(t('toastEditCancelled'));
 }
 
 // ══════════════════════════════════════════════
@@ -1124,6 +1156,7 @@ function renderHistory() {
           </div>
         </div>
         <span class="hist-toggle" id="hist-toggle-${idx}">▼</span>
+        <button class="del-btn" onclick="editEntry('${e.date}',event)">✏️</button>
         <button class="del-btn" onclick="delEntry('${e.date}',event)">🗑</button>
       </div>
       <div class="hist-detail hidden" id="hist-detail-${idx}">
@@ -1137,6 +1170,36 @@ function renderHistory() {
 function toggleHistDetail(idx) {
   document.getElementById('hist-detail-'+idx).classList.toggle('hidden');
   document.getElementById('hist-toggle-'+idx).classList.toggle('open');
+}
+
+function editEntry(date, ev) {
+  ev.stopPropagation();
+  const entry = loadData().find(e=>e.date===date);
+  if (!entry) return;
+
+  editingDate = date;
+
+  document.getElementById('f-date').value  = entry.date;
+  document.getElementById('f-start').value = entry.start || '';
+  document.getElementById('f-end').value   = entry.end || '';
+  document.getElementById('f-miles').value = entry.miles || '';
+  document.getElementById('f-extra').value = entry.extra || '';
+  document.getElementById('f-extra-reason').value = entry.extraReason || '';
+  document.getElementById('f-notes').value = entry.notes || '';
+
+  dayItems = (entry.items||[]).map(it=>({...it}));
+  beddingCount = entry.beddingCount || 0;
+  document.getElementById('val-bed').textContent = beddingCount;
+
+  updateHours();
+  renderItems();
+  updEarn();
+
+  const banner = document.getElementById('edit-banner');
+  banner.classList.remove('hidden');
+  document.getElementById('edit-banner-text').textContent = t('editingEntry', entry.date);
+
+  showTab('form');
 }
 
 function delEntry(date, ev) {
@@ -1278,6 +1341,11 @@ function bar(label,val,total) {
 // ══════════════════════════════════════════════
 // EXPORT EXCEL
 // ══════════════════════════════════════════════
+function formatDateDMY(dateStr) {
+  const [y,m,d] = dateStr.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 function exportExcel() {
   const data = loadData();
   if (!data.length) { toast(t('toastNoData')); return; }
@@ -1285,27 +1353,34 @@ function exportExcel() {
   const filtered = mf ? data.filter(e=>e.date.startsWith(mf)) : data;
   if (!filtered.length) { toast(t('toastNoDataMonth')); return; }
 
-  // Sheet 1: daily summary
-  const rows = filtered.map(e => {
-    const row = {
-      [t('colDate')]: e.date,
-      [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
-      [t('colStart')]: e.start, [t('colEnd')]: e.end, [t('colHours')]: e.hoursWorked, [t('colMiles')]: e.miles,
-    };
-    TYPES.forEach(k => { row[lbl(k)] = e[k]||0; });
-    row[t('colTotalApts')] = e.totalApts||0;
-    row[t('colBeddingPcs')] = e.beddingCount||0;
-    row[t('colBeddingValue')] = (e.beddingEarned||0).toFixed(2);
-    row[t('colBaseEarnings')] = (e.earnedBase||0).toFixed(2);
-    row[t('colExtra')] = (e.extra||0).toFixed(2);
-    row[t('colExtraReason')] = e.extraReason||'';
-    row[t('colTotal')] = (e.earned||0).toFixed(2);
-    row[t('colNotes')] = e.notes||'';
-    return row;
+  // Sheet 1: daily summary - one row per property/object, day info repeated on each row
+  const rows = filtered.flatMap(e => {
+    const items = (e.items||[]).length ? e.items : [null];
+    return items.map((it, i) => {
+      const row = {
+        [t('colObjectNr')]: items.length>1 || it ? i+1 : '',
+        [t('colDate')]: formatDateDMY(e.date),
+        [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
+        [t('colType')]: it ? (lbl(it.type)||it.type) : '',
+        [t('colAddress')]: it ? (it.address||'') : '',
+        [t('colRate')]: it ? it.rate : '',
+        [t('colStart')]: e.start, [t('colEnd')]: e.end, [t('colHours')]: e.hoursWorked, [t('colMiles')]: e.miles,
+      };
+      TYPES.forEach(k => { row[lbl(k)] = e[k]||0; });
+      row[t('colTotalApts')] = e.totalApts||0;
+      row[t('colBeddingPcs')] = e.beddingCount||0;
+      row[t('colBeddingValue')] = (e.beddingEarned||0).toFixed(2);
+      row[t('colBaseEarnings')] = (e.earnedBase||0).toFixed(2);
+      row[t('colExtra')] = (e.extra||0).toFixed(2);
+      row[t('colExtraReason')] = e.extraReason||'';
+      row[t('colTotal')] = (e.earned||0).toFixed(2);
+      row[t('colNotes')] = e.notes||'';
+      return row;
+    });
   });
 
   // totals row
-  const sum = {[t('colDate')]: t('sumLabel')};
+  const sum = {[t('colObjectNr')]: '', [t('colDate')]: t('sumLabel')};
   sum[t('colHours')] = filtered.reduce((s,e)=>s+parseFloat(e.hoursWorked||0),0).toFixed(2);
   sum[t('colMiles')] = filtered.reduce((s,e)=>s+parseFloat(e.miles||0),0).toFixed(2);
   TYPES.forEach(k=>{ sum[lbl(k)]=filtered.reduce((s,e)=>s+(e[k]||0),0); });
@@ -1321,7 +1396,7 @@ function exportExcel() {
 
   // Sheet 2: all items with addresses
   const itemRows = filtered.flatMap(e=>(e.items||[]).map(it=>({
-    [t('colDate')]: e.date,
+    [t('colDate')]: formatDateDMY(e.date),
     [t('colDay')]: new Date(e.date+'T00:00:00').toLocaleDateString(loc(),{weekday:'long'}),
     [t('colType')]: lbl(it.type)||it.type,
     [t('colAddress')]: it.address||'',
